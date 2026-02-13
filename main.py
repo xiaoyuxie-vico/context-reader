@@ -108,6 +108,16 @@ class VocabularyUpdateRequest(BaseModel):
     status: str | None = None
 
 
+class VocabularyBulkRequest(BaseModel):
+    indices: list[int]
+    status: str | None = None
+    importance: str | None = None
+
+
+class VocabularyBulkDeleteRequest(BaseModel):
+    indices: list[int]
+
+
 class ReadingPositionRequest(BaseModel):
     book_id: str
     position: int
@@ -479,6 +489,35 @@ def delete_vocabulary(index: int):
     rows.pop(index)
     _write_vocab_rows(rows)
     return {"status": "deleted"}
+
+
+@app.post("/api/vocabulary/bulk-delete")
+def bulk_delete_vocabulary(request: VocabularyBulkDeleteRequest):
+    """Delete multiple vocabulary rows by index. Indices are processed in descending order."""
+    rows = _read_vocab_rows()
+    valid = sorted(set(i for i in request.indices if 0 <= i < len(rows)), reverse=True)
+    for i in valid:
+        rows.pop(i)
+    _write_vocab_rows(rows)
+    return {"status": "deleted", "count": len(valid)}
+
+
+@app.post("/api/vocabulary/bulk-update")
+def bulk_update_vocabulary(request: VocabularyBulkRequest):
+    """Update status and/or importance for multiple vocabulary rows."""
+    rows = _read_vocab_rows()
+    updated = 0
+    for i in request.indices:
+        if i < 0 or i >= len(rows):
+            continue
+        row = rows[i]
+        if request.status is not None:
+            row["status"] = str(request.status).strip()
+        if request.importance is not None:
+            row["importance"] = str(request.importance).strip()
+        updated += 1
+    _write_vocab_rows(rows)
+    return {"status": "updated", "count": updated}
 
 
 @app.get("/")

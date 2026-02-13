@@ -13,6 +13,16 @@
     .btn-delete { padding: 6px 12px; font-size: 12px; }
     table input, table select { margin: 0; }
     table td:last-child { width: 90px; }
+    .bulk-actions {
+      display: none; align-items: center; gap: 12px; padding: 12px 16px;
+      background: var(--accent-light); border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .bulk-actions.visible { display: flex; flex-wrap: wrap; }
+    .bulk-actions .count { font-weight: 500; color: var(--text); }
+    .bulk-actions select { padding: 6px 10px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+    .row-cb { cursor: pointer; }
+    .row-cb { width: 18px; height: 18px; }
   </style>
 </head>
 <body>
@@ -62,12 +72,33 @@
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden;">
+      <div id="bulk-actions" class="bulk-actions">
+        <span class="count" id="bulk-count">0 selected</span>
+        <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-delete">Delete selected</button>
+        <select id="bulk-status">
+          <option value="">Set status...</option>
+          <option value="Master">Master</option>
+          <option value="Vague">Vague</option>
+          <option value="Don't remember">Don't remember</option>
+        </select>
+        <select id="bulk-importance">
+          <option value="">Set importance...</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+        <button type="button" id="bulk-apply-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Apply</button>
+        <button type="button" id="bulk-clear-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Clear selection</button>
+      </div>
       <div id="table-container">
         <p class="empty-state" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
         <div class="table-wrap" id="table-wrap" style="display: none;">
           <table id="vocab-table">
             <thead>
               <tr>
+                <th style="width: 36px;" id="th-cb"><input type="checkbox" id="select-all" class="row-cb" title="Select all" style="display: none;"></th>
                 <th>Date</th>
                 <th>Word</th>
                 <th>Meaning</th>
@@ -165,6 +196,7 @@
         if (fromServer) {
           return `
             <tr data-index="${origIdx}">
+              <td><input type="checkbox" class="row-cb" data-index="${origIdx}"></td>
               <td>${date}</td>
               <td><input type="text" value="${word}" data-field="word"></td>
               <td><input type="text" value="${meaning}" data-field="concise_meaning"></td>
@@ -176,6 +208,7 @@
         }
         return `
           <tr>
+            <td></td>
             <td>${date}</td>
             <td>${word}</td>
             <td>${meaning}</td>
@@ -187,13 +220,36 @@
       }).join('');
 
       if (fromServer) {
-        vocabBody.querySelectorAll('input, select').forEach(el => {
+        document.getElementById('select-all').style.display = '';
+        vocabBody.querySelectorAll('input:not(.row-cb), select').forEach(el => {
           el.addEventListener('change', () => saveRow(el.closest('tr').dataset.index));
           el.addEventListener('blur', () => saveRow(el.closest('tr').dataset.index));
         });
         vocabBody.querySelectorAll('.btn-delete').forEach(btn => {
           btn.addEventListener('click', () => deleteRow(parseInt(btn.dataset.index)));
         });
+        vocabBody.querySelectorAll('.row-cb').forEach(cb => {
+          cb.addEventListener('change', updateBulkActions);
+        });
+      } else {
+        document.getElementById('select-all').style.display = 'none';
+      }
+      updateBulkActions();
+    }
+
+    function getSelectedIndices() {
+      return Array.from(vocabBody.querySelectorAll('.row-cb:checked')).map(cb => parseInt(cb.dataset.index));
+    }
+
+    function updateBulkActions() {
+      const indices = getSelectedIndices();
+      const bulkBar = document.getElementById('bulk-actions');
+      const countEl = document.getElementById('bulk-count');
+      if (indices.length > 0 && fromServer) {
+        bulkBar.classList.add('visible');
+        countEl.textContent = indices.length + ' selected';
+      } else {
+        bulkBar.classList.remove('visible');
       }
     }
 
@@ -241,6 +297,61 @@
       div.textContent = text;
       return div.innerHTML;
     }
+
+    document.getElementById('select-all').addEventListener('change', (e) => {
+      vocabBody.querySelectorAll('.row-cb').forEach(cb => { cb.checked = e.target.checked; });
+      updateBulkActions();
+    });
+
+    document.getElementById('bulk-delete-btn').addEventListener('click', async () => {
+      const indices = getSelectedIndices();
+      if (!indices.length || !confirm(`Delete ${indices.length} selected entr${indices.length === 1 ? 'y' : 'ies'}?`)) return;
+      try {
+        const res = await fetch('/api/vocabulary/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ indices })
+        });
+        if (res.ok) {
+          const data = await fetch('/api/vocabulary').then(r => r.json());
+          renderTable(data.entries || [], true);
+        }
+      } catch (err) {
+        console.error('Bulk delete failed:', err);
+      }
+    });
+
+    document.getElementById('bulk-apply-btn').addEventListener('click', async () => {
+      const status = document.getElementById('bulk-status').value;
+      const importance = document.getElementById('bulk-importance').value;
+      if (!status && !importance) return;
+      const indices = getSelectedIndices();
+      if (!indices.length) return;
+      const payload = { indices };
+      if (status) payload.status = status;
+      if (importance) payload.importance = importance;
+      try {
+        const res = await fetch('/api/vocabulary/bulk-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const data = await fetch('/api/vocabulary').then(r => r.json());
+          renderTable(data.entries || [], true);
+          document.getElementById('bulk-status').value = '';
+          document.getElementById('bulk-importance').value = '';
+        }
+      } catch (err) {
+        console.error('Bulk update failed:', err);
+      }
+    });
+
+    document.getElementById('bulk-clear-btn').addEventListener('click', () => {
+      vocabBody.querySelectorAll('.row-cb').forEach(cb => { cb.checked = false; });
+      document.getElementById('select-all').checked = false;
+      updateBulkActions();
+    });
 
     filterImportance.addEventListener('change', () => {
       if (fromServer && allEntries.length) renderTable(allEntries, true);

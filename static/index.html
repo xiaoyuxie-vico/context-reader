@@ -22,6 +22,12 @@
       padding: 0 4px;
       border-radius: 2px;
     }
+    .article-content .vocab-highlight {
+      background: rgba(14, 165, 233, 0.12);
+      padding: 0 2px;
+      border-radius: 2px;
+      border-bottom: 1px dotted var(--accent);
+    }
     .explanation-panel {
       position: fixed;
       top: 24px;
@@ -119,6 +125,21 @@
       min-width: 3.5em;
       font-weight: 500;
     }
+    .font-size-control { display: flex; align-items: center; }
+    .font-size-btns { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .font-size-btn {
+      padding: 6px 12px; font-size: 12px; font-weight: 500; border: none; background: var(--bg-card);
+      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+    }
+    .font-size-btn:hover { background: var(--bg); color: var(--text); }
+    .font-size-btn.active { background: var(--accent); color: white; }
+    .font-family-control { display: flex; align-items: center; }
+    .font-family-btn {
+      padding: 6px 12px; font-size: 12px; font-weight: 500; border: none; background: var(--bg-card);
+      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+    }
+    .font-family-btn:hover { background: var(--bg); color: var(--text); }
+    .font-family-btn.active { background: var(--accent); color: white; }
   </style>
 </head>
 <body>
@@ -148,16 +169,33 @@
     <div id="article-container" class="card" style="display: none;">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
         <h2 style="margin: 0; font-size: 1.1rem;">Article</h2>
-        <div class="reading-bg-control">
-          <label for="bg-color" style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Background</label>
-          <select id="bg-color" style="font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); color: var(--text);">
-            <option value="white">White</option>
-            <option value="cream">Cream</option>
-            <option value="sepia">Sepia</option>
-            <option value="mint">Mint</option>
-            <option value="lavender">Lavender</option>
-            <option value="gray">Soft gray</option>
-          </select>
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+          <div class="reading-bg-control">
+            <label for="bg-color" style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Background</label>
+            <select id="bg-color" style="font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); color: var(--text);">
+              <option value="white">White</option>
+              <option value="cream">Cream</option>
+              <option value="sepia">Sepia</option>
+              <option value="mint">Mint</option>
+              <option value="lavender">Lavender</option>
+              <option value="gray">Soft gray</option>
+            </select>
+          </div>
+          <div class="font-size-control">
+            <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Size</span>
+            <div class="font-size-btns" role="group" aria-label="Font size">
+              <button type="button" class="font-size-btn" data-size="small">S</button>
+              <button type="button" class="font-size-btn active" data-size="medium">M</button>
+              <button type="button" class="font-size-btn" data-size="large">L</button>
+            </div>
+          </div>
+          <div class="font-family-control">
+            <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Font</span>
+            <div class="font-size-btns" role="group" aria-label="Font family">
+              <button type="button" class="font-family-btn active" data-family="serif">Serif</button>
+              <button type="button" class="font-family-btn" data-family="sans">Sans</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="reading-progress">
@@ -209,6 +247,57 @@
     const progressPct = document.getElementById('progress-pct');
     const bgColorSelect = document.getElementById('bg-color');
 
+    const FONT_SIZES = { small: '15px', medium: '18px', large: '22px' };
+
+    function applyFontSize(size) {
+      articleContent.style.fontSize = FONT_SIZES[size] || FONT_SIZES.medium;
+      document.querySelectorAll('.font-size-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.size === size);
+      });
+    }
+
+    document.querySelectorAll('.font-size-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const size = btn.dataset.size;
+        applyFontSize(size);
+        try { localStorage.setItem('reading_font_size', size); } catch (_) {}
+      });
+    });
+
+    const savedFontSize = (() => { try { return localStorage.getItem('reading_font_size'); } catch (_) { return null; } })();
+    if (savedFontSize && FONT_SIZES[savedFontSize]) {
+      applyFontSize(savedFontSize);
+    } else {
+      applyFontSize('medium');
+    }
+
+    const FONT_FAMILIES = {
+      serif: "var(--font-reading)",
+      sans: "var(--font-sans)"
+    };
+
+    function applyFontFamily(family) {
+      articleContent.style.fontFamily = FONT_FAMILIES[family] || FONT_FAMILIES.serif;
+      document.querySelectorAll('.font-family-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.family === family);
+      });
+    }
+
+    document.querySelectorAll('.font-family-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const family = btn.dataset.family;
+        applyFontFamily(family);
+        try { localStorage.setItem('reading_font_family', family); } catch (_) {}
+      });
+    });
+
+    const savedFontFamily = (() => { try { return localStorage.getItem('reading_font_family'); } catch (_) { return null; } })();
+    if (savedFontFamily && FONT_FAMILIES[savedFontFamily]) {
+      applyFontFamily(savedFontFamily);
+    } else {
+      applyFontFamily('serif');
+    }
+
     const BG_COLORS = {
       white: '#ffffff',
       cream: '#faf8f5',
@@ -247,13 +336,54 @@
     let lastExplanation = { word: '', concise_meaning: '' };
     let savePositionTimeout = null;
     let chatContext = null;
+    let cachedVocabWords = null;
 
-    submitBtn.addEventListener('click', () => {
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function escapeRegex(s) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function renderArticleWithHighlights(text, vocabWords) {
+      if (!text) return '';
+      let html = escapeHtml(text);
+      if (!vocabWords || vocabWords.length === 0) return html;
+      const words = [...new Set(vocabWords.map(w => (w || '').trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+      for (const word of words) {
+        const re = escapeRegex(word);
+        const regex = new RegExp(`(\\b)(${re})(\\b)`, 'gi');
+        html = html.replace(regex, '$1<span class="vocab-highlight">$2</span>$3');
+      }
+      return html;
+    }
+
+    async function setArticleContent(text) {
+      if (!cachedVocabWords) {
+        try {
+          const res = await fetch('/api/vocabulary');
+          const data = await res.json();
+          cachedVocabWords = (data.entries || []).map(e => e.word).filter(Boolean);
+        } catch (_) {
+          cachedVocabWords = [];
+        }
+      }
+      articleContent.innerHTML = renderArticleWithHighlights(text, cachedVocabWords);
+    }
+
+    function invalidateVocabCache() {
+      cachedVocabWords = null;
+    }
+
+    submitBtn.addEventListener('click', async () => {
       currentBookId = null;
       currentArticle = articleInput.value.trim();
       if (!currentArticle) return;
 
-      articleContent.textContent = currentArticle;
+      await setArticleContent(currentArticle);
       articleContainer.style.display = 'block';
       requestAnimationFrame(() => requestAnimationFrame(updateProgress));
     });
@@ -282,7 +412,7 @@
         articleInput.value = data.text;
         currentArticle = data.text;
         currentBookId = null;
-        articleContent.textContent = data.text;
+        await setArticleContent(data.text);
         articleContainer.style.display = 'block';
         articleScroll.scrollTop = 0;
         updateProgress();
@@ -315,7 +445,7 @@
         articleInput.value = data.text;
         currentArticle = data.text;
         currentBookId = data.book_id;
-        articleContent.textContent = data.text;
+        await setArticleContent(data.text);
         articleContainer.style.display = 'block';
         articleScroll.scrollTop = 0;
         if (currentBookId) {
@@ -524,6 +654,8 @@
         if (res.ok) {
           addVocabBtn.textContent = 'Added ✓';
           addVocabBtn.classList.add('added');
+          invalidateVocabCache();
+          if (currentArticle) await setArticleContent(currentArticle);
         }
       } catch (err) {
         addVocabBtn.textContent = 'Error';
