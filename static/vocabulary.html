@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    .load-actions { margin-bottom: 20px; }
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+    button:hover { background: #555; }
+    button.secondary {
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ccc;
+    }
+    button.secondary:hover { background: #e5e5e5; }
+    input[type="file"] { display: none; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #f5f5f5;
+      font-weight: 600;
+    }
+    tr:hover { background: #fafafa; }
+    .empty { color: #888; font-style: italic; padding: 24px; }
+    .back-link { font-size: 14px; margin-bottom: 16px; }
+    .back-link a { color: #333; }
+  </style>
+</head>
+<body>
+  <p class="back-link">
+    <a href="/">&larr; Back to Article Reader</a> &middot;
+    <a href="/summary" target="_blank">Summary</a>
+  </p>
+  <h1>Vocabulary</h1>
+
+  <div class="load-actions">
+    <button id="load-default">Load saved vocabulary</button>
+    <button class="secondary" id="load-csv-btn">Load from CSV file</button>
+    <input type="file" id="csv-input" accept=".csv">
+  </div>
+
+  <div id="table-container">
+    <p class="empty" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
+    <table id="vocab-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Word</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody id="vocab-body"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const loadDefaultBtn = document.getElementById('load-default');
+    const loadCsvBtn = document.getElementById('load-csv-btn');
+    const csvInput = document.getElementById('csv-input');
+    const emptyMsg = document.getElementById('empty-msg');
+    const vocabTable = document.getElementById('vocab-table');
+    const vocabBody = document.getElementById('vocab-body');
+
+    function renderTable(entries) {
+      if (!entries.length) {
+        emptyMsg.textContent = 'No entries found.';
+        emptyMsg.style.display = 'block';
+        vocabTable.style.display = 'none';
+        return;
+      }
+      emptyMsg.style.display = 'none';
+      vocabTable.style.display = 'table';
+      vocabBody.innerHTML = entries.map(e => `
+        <tr>
+          <td>${escapeHtml(e.date || '')}</td>
+          <td>${escapeHtml(e.word || '')}</td>
+          <td>${escapeHtml(e.concise_meaning || e.meaning || '')}</td>
+        </tr>
+      `).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    loadDefaultBtn.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/vocabulary');
+        const data = await res.json();
+        renderTable(data.entries || []);
+      } catch (err) {
+        emptyMsg.textContent = 'Error loading: ' + err.message;
+        emptyMsg.style.display = 'block';
+      }
+    });
+
+    loadCsvBtn.addEventListener('click', () => csvInput.click());
+
+    csvInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result;
+        const lines = text.trim().split('\n');
+        if (lines.length < 2) {
+          renderTable([]);
+          return;
+        }
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        const entries = [];
+        for (let i = 1; i < lines.length; i++) {
+          const values = parseCsvLine(lines[i]);
+          const row = {};
+          headers.forEach((h, j) => { row[h] = values[j] || ''; });
+          if (row.date || row.word || row.concise_meaning || row.meaning) {
+            entries.push(row);
+          }
+        }
+        renderTable(entries);
+      };
+      reader.readAsText(file, 'UTF-8');
+      csvInput.value = '';
+    });
+
+    function parseCsvLine(line) {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+          inQuotes = !inQuotes;
+        } else if (c === ',' && !inQuotes) {
+          result.push(current.replace(/^"|"$/g, '').trim());
+          current = '';
+        } else {
+          current += c;
+        }
+      }
+      result.push(current.replace(/^"|"$/g, '').trim());
+      return result;
+    }
+  </script>
+</body>
+</html>

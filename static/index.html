@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Article Reader</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 12px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      margin-top: 8px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+    }
+    button:hover { background: #555; }
+    #article-container {
+      margin-top: 24px;
+      padding: 20px 0;
+      border-top: 1px solid #ddd;
+    }
+    #article-content {
+      font-size: 17px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    #article-content .highlight {
+      background: #fff3cd;
+      padding: 0 2px;
+    }
+    .explanation-panel {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 320px;
+      max-height: 80vh;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      padding: 16px;
+      font-size: 14px;
+      z-index: 1000;
+      display: none;
+    }
+    .explanation-panel.visible { display: block; }
+    .explanation-panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      color: #666;
+    }
+    .explanation-panel .term { font-weight: bold; color: #333; }
+    .explanation-panel .content { margin-top: 8px; line-height: 1.5; }
+    .explanation-panel .content strong { font-weight: 600; color: #222; }
+    .explanation-panel .loading { color: #888; font-style: italic; }
+    .explanation-panel .close-btn {
+      float: right;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      color: #999;
+    }
+    .explanation-panel .close-btn:hover { color: #333; }
+    .hint { font-size: 12px; color: #888; margin-top: 4px; }
+    .add-vocab-btn {
+      margin-top: 12px;
+      padding: 6px 12px;
+      font-size: 13px;
+      background: #f0f0f0;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .add-vocab-btn:hover { background: #e5e5e5; }
+    .add-vocab-btn.added { background: #d4edda; color: #155724; }
+  </style>
+</head>
+<body>
+  <h1>Article Reader</h1>
+  <p>Paste your article below, then select any word or phrase to get a contextual explanation.</p>
+  <p>
+    <a href="/vocabulary" target="_blank">View vocabulary</a> &middot;
+    <a href="/summary" target="_blank">Summary</a> (opens in new tab)
+  </p>
+
+  <textarea id="article-input" placeholder="Paste your article here..."></textarea>
+  <br>
+  <button id="submit-btn">Display Article</button>
+  <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
+
+  <div id="article-container" style="display: none;">
+    <h2>Article</h2>
+    <div id="article-content"></div>
+  </div>
+
+  <div id="explanation-panel" class="explanation-panel">
+    <span class="close-btn" id="close-panel">&times;</span>
+    <h3>Explanation</h3>
+    <div class="term" id="panel-term"></div>
+    <div class="content" id="panel-content"></div>
+    <button type="button" class="add-vocab-btn" id="add-vocab-btn" style="display: none;">Add to vocabulary</button>
+  </div>
+
+  <script>
+    const articleInput = document.getElementById('article-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const articleContainer = document.getElementById('article-container');
+    const articleContent = document.getElementById('article-content');
+    const explanationPanel = document.getElementById('explanation-panel');
+    const panelTerm = document.getElementById('panel-term');
+    const panelContent = document.getElementById('panel-content');
+    const closePanelBtn = document.getElementById('close-panel');
+    const addVocabBtn = document.getElementById('add-vocab-btn');
+
+    let currentArticle = '';
+    let lastExplanation = { word: '', concise_meaning: '' };
+
+    submitBtn.addEventListener('click', () => {
+      currentArticle = articleInput.value.trim();
+      if (!currentArticle) return;
+
+      // Render with paragraph breaks preserved
+      articleContent.textContent = currentArticle;
+      articleContainer.style.display = 'block';
+    });
+
+    function getSentenceContaining(text, fullText) {
+      const idx = fullText.indexOf(text);
+      if (idx === -1) return text;
+
+      const before = fullText.slice(0, idx);
+      const after = fullText.slice(idx + text.length);
+
+      const lastDot = Math.max(before.lastIndexOf('.'), before.lastIndexOf('?'), before.lastIndexOf('!'));
+      const start = lastDot === -1 ? 0 : lastDot + 1;
+
+      const enders = [after.indexOf('.'), after.indexOf('?'), after.indexOf('!')].filter(x => x >= 0);
+      const endOffset = enders.length ? Math.min(...enders) + 1 : after.length;
+      const end = idx + text.length + endOffset;
+
+      return fullText.slice(start, end).trim();
+    }
+
+    async function explainSelection() {
+      const selection = window.getSelection();
+      const selectedText = selection.toString().trim();
+
+      if (!selectedText || selectedText.length > 100) return;
+      if (!currentArticle) return;
+
+      const fullSentence = getSentenceContaining(selectedText, currentArticle);
+
+      explanationPanel.classList.add('visible');
+      panelTerm.textContent = '"' + selectedText + '"';
+      panelContent.textContent = 'Loading...';
+      panelContent.className = 'content loading';
+      addVocabBtn.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/explain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            selected_text: selectedText,
+            full_sentence: fullSentence
+          })
+        });
+        const data = await res.json();
+        const raw = data.explanation || 'No explanation available.';
+        panelContent.innerHTML = formatExplanation(raw);
+        panelContent.className = 'content';
+
+        lastExplanation = { word: selectedText, concise_meaning: data.concise_meaning || '' };
+        addVocabBtn.style.display = 'block';
+        addVocabBtn.textContent = 'Add to vocabulary';
+        addVocabBtn.classList.remove('added');
+      } catch (err) {
+        panelContent.textContent = 'Error: ' + err.message;
+        panelContent.className = 'content';
+      }
+    }
+
+    function formatExplanation(text) {
+      const escaped = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    articleContent.addEventListener('mouseup', () => {
+      setTimeout(() => {
+        const sel = window.getSelection();
+        if (sel.toString().trim()) {
+          explainSelection();
+        }
+      }, 10);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.altKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        explainSelection();
+      }
+    });
+
+    closePanelBtn.addEventListener('click', () => {
+      explanationPanel.classList.remove('visible');
+    });
+
+    addVocabBtn.addEventListener('click', async () => {
+      if (!lastExplanation.word || !lastExplanation.concise_meaning) return;
+      addVocabBtn.disabled = true;
+      try {
+        const res = await fetch('/api/vocabulary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(lastExplanation)
+        });
+        if (res.ok) {
+          addVocabBtn.textContent = 'Added';
+          addVocabBtn.classList.add('added');
+        }
+      } catch (err) {
+        addVocabBtn.textContent = 'Error';
+      }
+      addVocabBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>

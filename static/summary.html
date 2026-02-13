@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vocabulary Summary</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, serif;
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    .back-link { font-size: 14px; margin-bottom: 16px; }
+    .back-link a { color: #333; }
+    .chart-container {
+      margin-top: 24px;
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      height: 220px;
+      padding: 20px 0;
+    }
+    .bar-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 0;
+      height: 100%;
+    }
+    .bar {
+      width: 100%;
+      max-width: 48px;
+      min-height: 8px;
+      background: #333;
+      border-radius: 4px 4px 0 0;
+      transition: height 0.3s;
+    }
+    .bar-label {
+      font-size: 12px;
+      margin-top: 8px;
+      text-align: center;
+      word-break: break-all;
+    }
+    .bar-value {
+      font-size: 11px;
+      color: #666;
+      margin-top: 2px;
+    }
+    .empty { color: #888; font-style: italic; padding: 24px; }
+    .nav-links { margin-top: 20px; font-size: 14px; }
+    .nav-links a { margin-right: 16px; }
+  </style>
+</head>
+<body>
+  <p class="back-link"><a href="/">&larr; Back to Article Reader</a></p>
+  <h1>Vocabulary Summary</h1>
+  <p>Words added per date</p>
+
+  <div id="chart-container" class="chart-container" style="display: none;"></div>
+  <p class="empty" id="empty-msg">Loading...</p>
+
+  <p class="nav-links">
+    <a href="/vocabulary" target="_blank">View vocabulary</a>
+    <a href="/" target="_blank">Article Reader</a>
+  </p>
+
+  <script>
+    const chartContainer = document.getElementById('chart-container');
+    const emptyMsg = document.getElementById('empty-msg');
+
+    async function loadSummary() {
+      try {
+        const res = await fetch('/api/vocabulary/summary');
+        const data = await res.json();
+        const byDate = data.by_date || {};
+        const entries = Object.entries(byDate);
+
+        if (!entries.length) {
+          emptyMsg.textContent = 'No vocabulary data yet. Add words from the Article Reader.';
+          emptyMsg.style.display = 'block';
+          return;
+        }
+
+        emptyMsg.style.display = 'none';
+        chartContainer.style.display = 'flex';
+
+        const maxCount = Math.max(...entries.map(([, c]) => c));
+        const maxBarHeight = 160;
+
+        chartContainer.innerHTML = entries.map(([date, count]) => {
+          const barHeight = maxCount > 0 ? Math.max((count / maxCount) * maxBarHeight, 12) : 12;
+          return `
+            <div class="bar-group">
+              <div class="bar" style="height: ${barHeight}px"></div>
+              <div class="bar-label">${formatDate(date)}</div>
+              <div class="bar-value">${count} word${count !== 1 ? 's' : ''}</div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        emptyMsg.textContent = 'Error loading: ' + err.message;
+        emptyMsg.style.display = 'block';
+      }
+    }
+
+    function formatDate(dateStr) {
+      const d = new Date(dateStr + 'T12:00:00');
+      return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    loadSummary();
+  </script>
+</body>
+</html>
