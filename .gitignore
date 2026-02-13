@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
+books/
+*.txt
 vocabulary.csv
 reading_positions.json
 .env

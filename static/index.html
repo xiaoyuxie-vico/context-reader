@@ -119,15 +119,17 @@
     </nav>
 
     <h1>Read with context</h1>
-    <p class="subtitle">Paste your article, import an EPUB book, or paste text below. Select any word or phrase to get a contextual explanation powered by AI.</p>
+    <p class="subtitle">Paste your article, import an EPUB or TXT file, or paste text below. Select any word or phrase to get a contextual explanation powered by AI.</p>
 
     <div class="card">
       <div class="action-bar" style="margin-bottom: 12px;">
         <button id="submit-btn" class="btn btn-primary">Display Article</button>
         <button id="import-epub-btn" class="btn btn-secondary">Import EPUB</button>
+        <button id="import-txt-btn" class="btn btn-secondary">Import TXT</button>
         <input type="file" id="epub-input" accept=".epub" style="display: none;">
+        <input type="file" id="txt-input" accept=".txt" style="display: none;">
       </div>
-      <textarea id="article-input" placeholder="Paste your article here, or import an EPUB book..."></textarea>
+      <textarea id="article-input" placeholder="Paste your article here, or import an EPUB or TXT file..."></textarea>
       <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
     </div>
 
@@ -155,7 +157,9 @@
     const articleInput = document.getElementById('article-input');
     const submitBtn = document.getElementById('submit-btn');
     const importEpubBtn = document.getElementById('import-epub-btn');
+    const importTxtBtn = document.getElementById('import-txt-btn');
     const epubInput = document.getElementById('epub-input');
+    const txtInput = document.getElementById('txt-input');
     const articleContainer = document.getElementById('article-container');
     const articleScroll = document.getElementById('article-scroll');
     const articleContent = document.getElementById('article-content');
@@ -191,6 +195,40 @@
     });
 
     importEpubBtn.addEventListener('click', () => epubInput.click());
+    importTxtBtn.addEventListener('click', () => txtInput.click());
+
+    txtInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      importTxtBtn.disabled = true;
+      importTxtBtn.textContent = 'Importing...';
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/import-txt', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const msg = typeof err.detail === 'string' ? err.detail : (err.detail?.[0]?.msg || res.statusText);
+          throw new Error(msg || 'Import failed');
+        }
+        const data = await res.json();
+        articleInput.value = data.text;
+        currentArticle = data.text;
+        currentBookId = null;
+        articleContent.textContent = data.text;
+        articleContainer.style.display = 'block';
+        articleScroll.scrollTop = 0;
+        updateProgress();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+      importTxtBtn.disabled = false;
+      importTxtBtn.textContent = 'Import TXT';
+      txtInput.value = '';
+    });
 
     epubInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];

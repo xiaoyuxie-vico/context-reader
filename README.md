@@ -6,7 +6,7 @@ Read anything, tap any word for instant AI explanations, and build a vocabulary 
 
 ## Features
 
-- **Read** — Paste text or import EPUB books
+- **Read** — Paste text or import EPUB/TXT files
 - **Explain** — Select any word or phrase for contextual AI explanation (Gemini or OpenAI)
 - **Vocabulary** — Save words, set importance, filter by date and status
 - **Quiz** — Test yourself: see a word, rate recall (Master/Vague/Don't remember), then reveal the meaning
@@ -43,7 +43,7 @@ Open http://127.0.0.1:8000
 
 ### Reading
 
-1. Paste your article or click **Import EPUB** to load a book
+1. Paste your article or click **Import EPUB** / **Import TXT** to load a file
 2. Click **Display Article** (EPUB imports show automatically)
 3. Select a word or phrase → explanation appears in the right panel
 4. Press **Alt+E** (Option+E on Mac) for quick explanation

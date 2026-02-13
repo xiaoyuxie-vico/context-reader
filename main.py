@@ -225,6 +225,23 @@ def _save_reading_position(book_id: str, position: int, filename: str = "") -> N
         json.dump(data, f, indent=2)
 
 
+@app.post("/api/import-txt")
+async def import_txt(file: UploadFile):
+    """Read text from uploaded TXT file."""
+    if not file.filename or not file.filename.lower().endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Please upload a .txt file")
+    try:
+        content = await file.read()
+        text = content.decode("utf-8", errors="replace")
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="File is empty")
+        return {"text": text, "filename": file.filename}
+    except HTTPException:
+        raise
+    except UnicodeDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Could not decode file: {e}")
+
+
 @app.post("/api/import-epub")
 async def import_epub(file: UploadFile):
     """Extract text from uploaded EPUB file."""
