@@ -2,9 +2,7 @@
 
 ![Article Reader screenshot](assets/screenshot.png)
 
-![Vocabulary page screenshot](assets/vocabulary-screenshot.png)
-
-A minimal local web app for reading articles. Select any word or phrase to get a concise, context-aware explanation from an LLM.
+A minimal local web app for reading articles and EPUB books. Paste text or import an EPUB, then select any word or phrase to get a concise, context-aware explanation from an LLM.
 
 ## Setup
 
@@ -45,8 +43,12 @@ Open http://127.0.0.1:8000
 
 ## Usage
 
-1. Paste your article into the text area
-2. Click "Display Article"
+1. Paste your article into the text area, or click "Import EPUB" to load a book
+2. Click "Display Article" (or the article appears automatically after EPUB import)
+3. For EPUB books, your reading position is saved automatically and restored when you reload the same book
 3. Select a word or phrase while reading
 4. The explanation appears in a panel on the right
 5. Or press **Alt+E** (Option+E on Mac) after selecting text
+
+# Learn vocabulary
+![Vocabulary page screenshot](assets/vocabulary-screenshot.png)

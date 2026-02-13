@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import csv
+import hashlib
+import json
 import os
 import re
 from collections import Counter
@@ -15,10 +17,17 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+try:
+    from ebooklib import epub, ITEM_DOCUMENT
+    from bs4 import BeautifulSoup
+    EPUB_AVAILABLE = True
+except ImportError:
+    EPUB_AVAILABLE = False
 
 # LLM setup - configurable via env
 # Gemini (preferred): GEMINI_API_KEY or GOOGLE_API_KEY
@@ -45,6 +54,7 @@ _explanation_cache: dict[str, str] = {}
 
 
 VOCABULARY_CSV = Path(__file__).parent / "vocabulary.csv"
+READING_POSITIONS_JSON = Path(__file__).parent / "reading_positions.json"
 VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance"]
 
 
@@ -85,6 +95,49 @@ class VocabularyUpdateRequest(BaseModel):
     word: str | None = None
     concise_meaning: str | None = None
     importance: str | None = None
+
+
+class ReadingPositionRequest(BaseModel):
+    book_id: str
+    position: int
+    filename: str = ""
+
+
+def _html_to_plain_text(html: bytes) -> str:
+    """Convert HTML to plain text with proper paragraph breaks."""
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Replace <br> with newline
+    for tag in soup.find_all("br"):
+        tag.replace_with("\n")
+
+    # Replace block elements: innermost first so nested structure is preserved
+    block_tags = ["p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"]
+    for tag in reversed(soup.find_all(block_tags)):
+        # Preserve newlines from nested blocks; use space only within inline content
+        tag.replace_with(tag.get_text(separator=" ") + "\n\n")
+
+    # Get remaining text with spaces between inline elements (no random line breaks)
+    text = soup.get_text(separator=" ")
+    # Normalize: collapse multiple spaces, collapse 3+ newlines to 2
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _extract_text_from_epub(file_content: bytes) -> str:
+    """Extract plain text from EPUB file content with proper formatting."""
+    if not EPUB_AVAILABLE:
+        raise RuntimeError("ebooklib and beautifulsoup4 are required for EPUB support. Run: pip install ebooklib beautifulsoup4")
+    import io
+    book = epub.read_epub(io.BytesIO(file_content))
+    parts = []
+    for item in book.get_items():
+        if item.get_type() == ITEM_DOCUMENT:
+            text = _html_to_plain_text(item.get_content())
+            if text:
+                parts.append(text)
+    return "\n\n".join(parts) if parts else ""
 
 
 def extract_concise_meaning(explanation: str) -> str:
@@ -148,6 +201,65 @@ Your response:""".format(
         return explanation
     except Exception as e:
         return f"Error: {str(e)}"
+
+
+def _load_reading_positions() -> dict:
+    """Load saved reading positions."""
+    if not READING_POSITIONS_JSON.exists():
+        return {}
+    try:
+        with open(READING_POSITIONS_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_reading_position(book_id: str, position: int, filename: str = "") -> None:
+    """Save reading position for a book."""
+    data = _load_reading_positions()
+    data[book_id] = {"position": position, "filename": filename}
+    with open(READING_POSITIONS_JSON, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+
+@app.post("/api/import-epub")
+async def import_epub(file: UploadFile):
+    """Extract text from uploaded EPUB file."""
+    if not file.filename or not file.filename.lower().endswith(".epub"):
+        raise HTTPException(status_code=400, detail="Please upload an .epub file")
+    if not EPUB_AVAILABLE:
+        raise HTTPException(
+            status_code=500,
+            detail="EPUB support not available. Run: pip install ebooklib beautifulsoup4",
+        )
+    try:
+        content = await file.read()
+        book_id = hashlib.sha256(content).hexdigest()
+        text = _extract_text_from_epub(content)
+        if not text.strip():
+            raise HTTPException(status_code=400, detail="No text content found in the EPUB file")
+        return {"text": text, "filename": file.filename, "book_id": book_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read EPUB: {str(e)}")
+
+
+@app.get("/api/reading-position")
+def get_reading_position(book_id: str):
+    """Get saved reading position for a book."""
+    data = _load_reading_positions()
+    entry = data.get(book_id)
+    if not entry:
+        return {"position": None}
+    return {"position": entry.get("position", 0)}
+
+
+@app.post("/api/reading-position")
+def save_reading_position(request: ReadingPositionRequest):
+    """Save reading position for a book."""
+    _save_reading_position(request.book_id, request.position, request.filename)
+    return {"status": "saved"}
 
 
 @app.post("/api/explain")

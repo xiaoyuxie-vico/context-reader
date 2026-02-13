@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 vocabulary.csv
+reading_positions.json
 .env
 .env.*
 !.env.example

@@ -77,6 +77,36 @@
       background: var(--success) !important;
       color: white !important;
     }
+    #article-scroll {
+      max-height: 65vh;
+      overflow-y: auto;
+      margin-top: 12px;
+    }
+    .reading-progress {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .progress-bar {
+      flex: 1;
+      height: 6px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.15s ease;
+    }
+    .progress-pct {
+      min-width: 3.5em;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
@@ -88,19 +118,27 @@
     </nav>
 
     <h1>Read with context</h1>
-    <p class="subtitle">Paste your article below, then select any word or phrase to get a contextual explanation powered by AI.</p>
+    <p class="subtitle">Paste your article, import an EPUB book, or paste text below. Select any word or phrase to get a contextual explanation powered by AI.</p>
 
     <div class="card">
-      <textarea id="article-input" placeholder="Paste your article here..."></textarea>
-      <div class="action-bar" style="margin-top: 16px;">
+      <div class="action-bar" style="margin-bottom: 12px;">
         <button id="submit-btn" class="btn btn-primary">Display Article</button>
+        <button id="import-epub-btn" class="btn btn-secondary">Import EPUB</button>
+        <input type="file" id="epub-input" accept=".epub" style="display: none;">
       </div>
+      <textarea id="article-input" placeholder="Paste your article here, or import an EPUB book..."></textarea>
       <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
     </div>
 
     <div id="article-container" class="card" style="display: none;">
-      <h2 style="margin: 0 0 16px 0; font-size: 1.1rem;">Article</h2>
-      <div id="article-content" class="article-content"></div>
+      <h2 style="margin: 0; font-size: 1.1rem;">Article</h2>
+      <div class="reading-progress">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%"></div></div>
+        <span class="progress-pct" id="progress-pct">0%</span>
+      </div>
+      <div id="article-scroll">
+        <div id="article-content" class="article-content"></div>
+      </div>
     </div>
   </div>
 
@@ -115,23 +153,87 @@
   <script>
     const articleInput = document.getElementById('article-input');
     const submitBtn = document.getElementById('submit-btn');
+    const importEpubBtn = document.getElementById('import-epub-btn');
+    const epubInput = document.getElementById('epub-input');
     const articleContainer = document.getElementById('article-container');
+    const articleScroll = document.getElementById('article-scroll');
     const articleContent = document.getElementById('article-content');
     const explanationPanel = document.getElementById('explanation-panel');
     const panelTerm = document.getElementById('panel-term');
     const panelContent = document.getElementById('panel-content');
     const closePanelBtn = document.getElementById('close-panel');
     const addVocabBtn = document.getElementById('add-vocab-btn');
+    const progressFill = document.getElementById('progress-fill');
+    const progressPct = document.getElementById('progress-pct');
+
+    function updateProgress() {
+      const { scrollTop, scrollHeight, clientHeight } = articleScroll;
+      const maxScroll = scrollHeight - clientHeight;
+      const pct = maxScroll <= 0 ? 100 : Math.round((scrollTop / maxScroll) * 100);
+      progressFill.style.width = pct + '%';
+      progressPct.textContent = pct + '%';
+    }
 
     let currentArticle = '';
+    let currentBookId = null;
     let lastExplanation = { word: '', concise_meaning: '' };
+    let savePositionTimeout = null;
 
     submitBtn.addEventListener('click', () => {
+      currentBookId = null;
       currentArticle = articleInput.value.trim();
       if (!currentArticle) return;
 
       articleContent.textContent = currentArticle;
       articleContainer.style.display = 'block';
+      requestAnimationFrame(() => requestAnimationFrame(updateProgress));
+    });
+
+    importEpubBtn.addEventListener('click', () => epubInput.click());
+
+    epubInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      importEpubBtn.disabled = true;
+      importEpubBtn.textContent = 'Importing...';
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/import-epub', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const msg = typeof err.detail === 'string' ? err.detail : (err.detail?.[0]?.msg || res.statusText);
+          throw new Error(msg || 'Import failed');
+        }
+        const data = await res.json();
+        articleInput.value = data.text;
+        currentArticle = data.text;
+        currentBookId = data.book_id;
+        articleContent.textContent = data.text;
+        articleContainer.style.display = 'block';
+        articleScroll.scrollTop = 0;
+        if (currentBookId) {
+          const posRes = await fetch(`/api/reading-position?book_id=${currentBookId}`);
+          const posData = await posRes.json();
+          if (posData.position != null) {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                articleScroll.scrollTop = posData.position;
+                updateProgress();
+              });
+            });
+          }
+        }
+        updateProgress();
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+      importEpubBtn.disabled = false;
+      importEpubBtn.textContent = 'Import EPUB';
+      epubInput.value = '';
     });
 
     function getSentenceContaining(text, fullText) {
@@ -198,6 +300,19 @@
       return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\n/g, '<br>');
     }
+
+    articleScroll.addEventListener('scroll', () => {
+      updateProgress();
+      if (!currentBookId) return;
+      clearTimeout(savePositionTimeout);
+      savePositionTimeout = setTimeout(() => {
+        fetch('/api/reading-position', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ book_id: currentBookId, position: articleScroll.scrollTop, filename: '' })
+        }).catch(() => {});
+      }, 500);
+    });
 
     articleContent.addEventListener('mouseup', () => {
       setTimeout(() => {
