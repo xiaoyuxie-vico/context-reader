@@ -3,6 +3,10 @@ Local Article Reader with Contextual LLM Word Explanation
 Backend: FastAPI + LLM API
 """
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import csv
 import os
 import re
@@ -11,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -39,6 +43,29 @@ _explanation_cache: dict[str, str] = {}
 
 
 VOCABULARY_CSV = Path(__file__).parent / "vocabulary.csv"
+VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance"]
+
+
+def _read_vocab_rows() -> list[dict]:
+    """Read all vocabulary rows, ensuring standard columns exist."""
+    if not VOCABULARY_CSV.exists():
+        return []
+    rows = []
+    with open(VOCABULARY_CSV, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            r = {h: row.get(h, "") for h in VOCAB_HEADERS}
+            if r.get("word") or r.get("concise_meaning"):
+                rows.append(r)
+    return rows
+
+
+def _write_vocab_rows(rows: list[dict]) -> None:
+    """Write all vocabulary rows to CSV."""
+    with open(VOCABULARY_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=VOCAB_HEADERS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 class ExplainRequest(BaseModel):
@@ -49,6 +76,13 @@ class ExplainRequest(BaseModel):
 class VocabularyRequest(BaseModel):
     word: str
     concise_meaning: str
+    importance: str = ""
+
+
+class VocabularyUpdateRequest(BaseModel):
+    word: str | None = None
+    concise_meaning: str | None = None
+    importance: str | None = None
 
 
 def extract_concise_meaning(explanation: str) -> str:
@@ -128,28 +162,18 @@ def explain(request: ExplainRequest):
 @app.get("/api/vocabulary")
 def get_vocabulary():
     """Return vocabulary CSV data as JSON."""
-    if not VOCABULARY_CSV.exists():
-        return {"entries": []}
-    entries = []
-    with open(VOCABULARY_CSV, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if "date" in row and "word" in row and "concise_meaning" in row:
-                entries.append(row)
+    entries = _read_vocab_rows()
     return {"entries": entries}
 
 
 @app.get("/api/vocabulary/summary")
 def get_vocabulary_summary():
     """Return word counts by date for the bar chart."""
-    if not VOCABULARY_CSV.exists():
-        return {"by_date": {}}
+    rows = _read_vocab_rows()
     counts = Counter()
-    with open(VOCABULARY_CSV, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if "date" in row and row["date"]:
-                counts[row["date"]] += 1
+    for row in rows:
+        if row.get("date"):
+            counts[row["date"]] += 1
     by_date = dict(sorted(counts.items()))
     return {"by_date": by_date}
 
@@ -157,17 +181,43 @@ def get_vocabulary_summary():
 @app.post("/api/vocabulary")
 def add_to_vocabulary(request: VocabularyRequest):
     """Append a word to the vocabulary CSV file."""
-    file_exists = VOCABULARY_CSV.exists()
-    with open(VOCABULARY_CSV, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(["date", "word", "concise_meaning"])
-        writer.writerow([
-            datetime.now().strftime("%Y-%m-%d"),
-            request.word.strip(),
-            request.concise_meaning.strip(),
-        ])
+    rows = _read_vocab_rows()
+    rows.append({
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "word": request.word.strip(),
+        "concise_meaning": request.concise_meaning.strip(),
+        "importance": (request.importance or "").strip(),
+    })
+    _write_vocab_rows(rows)
     return {"status": "added"}
+
+
+@app.put("/api/vocabulary/{index:int}")
+def update_vocabulary(index: int, request: VocabularyUpdateRequest):
+    """Update a vocabulary row by index."""
+    rows = _read_vocab_rows()
+    if index < 0 or index >= len(rows):
+        raise HTTPException(status_code=404, detail="Invalid index")
+    row = rows[index]
+    if request.word is not None:
+        row["word"] = request.word.strip()
+    if request.concise_meaning is not None:
+        row["concise_meaning"] = request.concise_meaning.strip()
+    if request.importance is not None:
+        row["importance"] = str(request.importance).strip()
+    _write_vocab_rows(rows)
+    return {"status": "updated"}
+
+
+@app.delete("/api/vocabulary/{index:int}")
+def delete_vocabulary(index: int):
+    """Delete a vocabulary row by index."""
+    rows = _read_vocab_rows()
+    if index < 0 or index >= len(rows):
+        raise HTTPException(status_code=404, detail="Invalid index")
+    rows.pop(index)
+    _write_vocab_rows(rows)
+    return {"status": "deleted"}
 
 
 @app.get("/")

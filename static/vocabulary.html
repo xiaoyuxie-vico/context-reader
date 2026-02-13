@@ -52,6 +52,34 @@
     .empty { color: #888; font-style: italic; padding: 24px; }
     .back-link { font-size: 14px; margin-bottom: 16px; }
     .back-link a { color: #333; }
+    input, select {
+      width: 100%;
+      padding: 6px 8px;
+      font-size: 14px;
+      font-family: inherit;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    select { cursor: pointer; min-width: 60px; }
+    .btn-delete {
+      padding: 4px 10px;
+      font-size: 12px;
+      background: #c33;
+      color: white;
+    }
+    .btn-delete:hover { background: #a22; }
+    .filters {
+      margin: 16px 0;
+      padding: 12px;
+      background: #f9f9f9;
+      border-radius: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+    .filters label { font-size: 14px; font-weight: 500; }
+    .filters select { width: auto; min-width: 100px; }
   </style>
 </head>
 <body>
@@ -67,6 +95,27 @@
     <input type="file" id="csv-input" accept=".csv">
   </div>
 
+  <div id="filters" class="filters" style="display: none;">
+    <label>Importance:</label>
+    <select id="filter-importance">
+      <option value="">All</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+    </select>
+    <label>Date range:</label>
+    <select id="filter-date">
+      <option value="">All</option>
+      <option value="1">Last 1 day</option>
+      <option value="3">Last 3 days</option>
+      <option value="7">Last 1 week</option>
+      <option value="14">Last 2 weeks</option>
+      <option value="30">Last 1 month</option>
+    </select>
+  </div>
+
   <div id="table-container">
     <p class="empty" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
     <table id="vocab-table" style="display: none;">
@@ -75,6 +124,8 @@
           <th>Date</th>
           <th>Word</th>
           <th>Meaning</th>
+          <th>Importance</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="vocab-body"></tbody>
@@ -88,23 +139,136 @@
     const emptyMsg = document.getElementById('empty-msg');
     const vocabTable = document.getElementById('vocab-table');
     const vocabBody = document.getElementById('vocab-body');
+    const filtersDiv = document.getElementById('filters');
+    const filterImportance = document.getElementById('filter-importance');
+    const filterDate = document.getElementById('filter-date');
 
-    function renderTable(entries) {
-      if (!entries.length) {
-        emptyMsg.textContent = 'No entries found.';
+    let allEntries = [];
+    let fromServer = false;
+
+    function importanceOptions(val) {
+      const opts = ['', '1', '2', '3', '4', '5'];
+      return opts.map(v => `<option value="${escapeHtml(v)}" ${v === (val || '') ? 'selected' : ''}>${v || '—'}</option>`).join('');
+    }
+
+    function parseDate(dateStr) {
+      if (!dateStr) return null;
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function applyFilters() {
+      const imp = filterImportance.value;
+      const days = filterDate.value ? parseInt(filterDate.value) : null;
+      const now = new Date();
+      const cutoff = days ? new Date(now.getTime() - days * 24 * 60 * 60 * 1000) : null;
+
+      return allEntries
+        .map((e, i) => [e, i])
+        .filter(([e]) => {
+          if (imp && (e.importance || '') !== imp) return false;
+          if (cutoff) {
+            const d = parseDate(e.date);
+            if (!d || d < cutoff) return false;
+          }
+          return true;
+        });
+    }
+
+    function renderTable(entries, isFromServer = false) {
+      allEntries = entries;
+      fromServer = isFromServer;
+      const pairs = fromServer ? applyFilters() : entries.map((e, i) => [e, i]);
+      const toRender = pairs.map(([e]) => e);
+      const indices = pairs.map(([, i]) => i);
+
+      filtersDiv.style.display = fromServer && allEntries.length ? 'flex' : 'none';
+
+      if (!toRender.length) {
+        emptyMsg.textContent = fromServer
+          ? (allEntries.length ? 'No entries match the filter.' : 'No entries found.')
+          : 'Click "Load saved vocabulary" to view your words.';
         emptyMsg.style.display = 'block';
         vocabTable.style.display = 'none';
         return;
       }
       emptyMsg.style.display = 'none';
       vocabTable.style.display = 'table';
-      vocabBody.innerHTML = entries.map(e => `
-        <tr>
-          <td>${escapeHtml(e.date || '')}</td>
-          <td>${escapeHtml(e.word || '')}</td>
-          <td>${escapeHtml(e.concise_meaning || e.meaning || '')}</td>
-        </tr>
-      `).join('');
+      vocabBody.innerHTML = toRender.map((e, i) => {
+        const origIdx = indices[i];
+        const word = escapeHtml(e.word || '');
+        const meaning = escapeHtml(e.concise_meaning || e.meaning || '');
+        const date = escapeHtml(e.date || '');
+        const importance = e.importance || '';
+        if (fromServer) {
+          return `
+            <tr data-index="${origIdx}">
+              <td>${date}</td>
+              <td><input type="text" value="${word}" data-field="word"></td>
+              <td><input type="text" value="${meaning}" data-field="concise_meaning"></td>
+              <td><select data-field="importance">${importanceOptions(importance)}</select></td>
+              <td><button type="button" class="btn-delete" data-index="${i}">Delete</button></td>
+            </tr>
+          `;
+        }
+        return `
+          <tr>
+            <td>${date}</td>
+            <td>${word}</td>
+            <td>${meaning}</td>
+            <td>${importance || '—'}</td>
+            <td></td>
+          </tr>
+        `;
+      }).join('');
+
+      if (fromServer) {
+        vocabBody.querySelectorAll('input, select').forEach(el => {
+          el.addEventListener('change', () => saveRow(el.closest('tr').dataset.index));
+          el.addEventListener('blur', () => saveRow(el.closest('tr').dataset.index));
+        });
+        vocabBody.querySelectorAll('.btn-delete').forEach(btn => {
+          btn.addEventListener('click', () => deleteRow(parseInt(btn.dataset.index)));
+        });
+      }
+    }
+
+    let saveTimeouts = {};
+    async function saveRow(index) {
+      clearTimeout(saveTimeouts[index]);
+      saveTimeouts[index] = setTimeout(async () => {
+        const tr = vocabBody.querySelector(`tr[data-index="${index}"]`);
+        if (!tr) return;
+        const word = tr.querySelector('[data-field="word"]').value.trim();
+        const meaning = tr.querySelector('[data-field="concise_meaning"]').value.trim();
+        const importance = tr.querySelector('[data-field="importance"]').value;
+        try {
+          const res = await fetch(`/api/vocabulary/${index}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word, concise_meaning: meaning, importance })
+          });
+          if (res.ok) {
+            allEntries[index] = { ...allEntries[index], word, concise_meaning: meaning, importance };
+            renderTable(allEntries, fromServer);
+          }
+        } catch (err) {
+          console.error('Save failed:', err);
+        }
+      }, 300);
+    }
+
+    async function deleteRow(index) {
+      if (!confirm('Delete this entry?')) return;
+      try {
+        const res = await fetch(`/api/vocabulary/${index}`, { method: 'DELETE' });
+        if (res.ok) {
+          const data = await fetch('/api/vocabulary').then(r => r.json());
+          renderTable(data.entries || [], true);
+        }
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
     }
 
     function escapeHtml(text) {
@@ -113,11 +277,18 @@
       return div.innerHTML;
     }
 
+    filterImportance.addEventListener('change', () => {
+      if (fromServer && allEntries.length) renderTable(allEntries, true);
+    });
+    filterDate.addEventListener('change', () => {
+      if (fromServer && allEntries.length) renderTable(allEntries, true);
+    });
+
     loadDefaultBtn.addEventListener('click', async () => {
       try {
         const res = await fetch('/api/vocabulary');
         const data = await res.json();
-        renderTable(data.entries || []);
+        renderTable(data.entries || [], true);
       } catch (err) {
         emptyMsg.textContent = 'Error loading: ' + err.message;
         emptyMsg.style.display = 'block';

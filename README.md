@@ -1,5 +1,7 @@
 # Article Reader with Contextual LLM Word Explanation
 
+![Article Reader screenshot](assets/screenshot.png)
+
 A minimal local web app for reading articles. Select any word or phrase to get a concise, context-aware explanation from an LLM.
 
 ## Setup
@@ -10,11 +12,15 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Set your Gemini API key (get one at https://aistudio.google.com/apikey):
+Create a `.env` file in the project root (copy from `.env.example`):
 
-```bash
-export GEMINI_API_KEY="your-gemini-api-key"
 ```
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+Get a key at https://aistudio.google.com/apikey
+
+**Security:** Never commit `.env` — it's in `.gitignore`. Your key stays local only.
 
 Optional: `GEMINI_MODEL` – model name (default: `gemini-2.5-flash`)
 
