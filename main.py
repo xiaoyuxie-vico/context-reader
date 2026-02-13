@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # LLM setup - configurable via env
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Article Reader", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 # In-memory cache for explanations (optional enhancement)
 _explanation_cache: dict[str, str] = {}

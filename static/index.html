@@ -4,124 +4,112 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Article Reader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: Georgia, serif;
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-      line-height: 1.6;
-      color: #333;
-    }
-    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
-    textarea {
-      width: 100%;
-      min-height: 120px;
-      padding: 12px;
-      font-size: 14px;
-      font-family: inherit;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-    }
-    button {
-      margin-top: 8px;
-      padding: 8px 16px;
-      font-size: 14px;
-      cursor: pointer;
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 4px;
-    }
-    button:hover { background: #555; }
-    #article-container {
-      margin-top: 24px;
-      padding: 20px 0;
-      border-top: 1px solid #ddd;
-    }
-    #article-content {
-      font-size: 17px;
+    .article-content {
+      font-family: var(--font-reading);
+      font-size: 18px;
+      line-height: 1.75;
       white-space: pre-wrap;
       word-wrap: break-word;
     }
-    #article-content .highlight {
-      background: #fff3cd;
-      padding: 0 2px;
+    .article-content .highlight {
+      background: linear-gradient(120deg, #fef3c7 0%, #fde68a 100%);
+      padding: 0 4px;
+      border-radius: 2px;
     }
     .explanation-panel {
       position: fixed;
-      top: 20px;
-      right: 20px;
-      width: 320px;
-      max-height: 80vh;
+      top: 24px;
+      right: 24px;
+      width: 340px;
+      max-height: 85vh;
       overflow-y: auto;
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-      padding: 16px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      padding: 20px;
       font-size: 14px;
       z-index: 1000;
       display: none;
+      border: 1px solid var(--border);
     }
-    .explanation-panel.visible { display: block; }
+    .explanation-panel.visible { display: block; animation: slideIn 0.2s ease; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
     .explanation-panel h3 {
-      margin: 0 0 8px 0;
-      font-size: 14px;
-      color: #666;
+      margin: 0 0 12px 0;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    .explanation-panel .term { font-weight: bold; color: #333; }
-    .explanation-panel .content { margin-top: 8px; line-height: 1.5; }
-    .explanation-panel .content strong { font-weight: 600; color: #222; }
-    .explanation-panel .loading { color: #888; font-style: italic; }
+    .explanation-panel .term { font-weight: 600; color: var(--text); font-size: 16px; margin-bottom: 12px; }
+    .explanation-panel .content { line-height: 1.6; color: var(--text); }
+    .explanation-panel .content strong { font-weight: 600; color: var(--text); }
+    .explanation-panel .loading { color: var(--text-muted); font-style: italic; }
     .explanation-panel .close-btn {
-      float: right;
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       cursor: pointer;
-      font-size: 18px;
-      line-height: 1;
-      color: #999;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
     }
-    .explanation-panel .close-btn:hover { color: #333; }
-    .hint { font-size: 12px; color: #888; margin-top: 4px; }
+    .explanation-panel .close-btn:hover {
+      background: var(--bg);
+      color: var(--text);
+    }
     .add-vocab-btn {
-      margin-top: 12px;
-      padding: 6px 12px;
-      font-size: 13px;
-      background: #f0f0f0;
-      color: #333;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      cursor: pointer;
+      margin-top: 16px;
+      width: 100%;
     }
-    .add-vocab-btn:hover { background: #e5e5e5; }
-    .add-vocab-btn.added { background: #d4edda; color: #155724; }
+    .add-vocab-btn.added {
+      background: var(--success) !important;
+      color: white !important;
+    }
   </style>
 </head>
 <body>
-  <h1>Article Reader</h1>
-  <p>Paste your article below, then select any word or phrase to get a contextual explanation.</p>
-  <p>
-    <a href="/vocabulary" target="_blank">View vocabulary</a> &middot;
-    <a href="/summary" target="_blank">Summary</a> (opens in new tab)
-  </p>
+  <div class="page">
+    <nav class="nav">
+      <span class="brand">Article Reader</span>
+      <a href="/vocabulary">Vocabulary</a>
+      <a href="/summary" target="_blank">Summary</a>
+    </nav>
 
-  <textarea id="article-input" placeholder="Paste your article here..."></textarea>
-  <br>
-  <button id="submit-btn">Display Article</button>
-  <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
+    <h1>Read with context</h1>
+    <p class="subtitle">Paste your article below, then select any word or phrase to get a contextual explanation powered by AI.</p>
 
-  <div id="article-container" style="display: none;">
-    <h2>Article</h2>
-    <div id="article-content"></div>
+    <div class="card">
+      <textarea id="article-input" placeholder="Paste your article here..."></textarea>
+      <div class="action-bar" style="margin-top: 16px;">
+        <button id="submit-btn" class="btn btn-primary">Display Article</button>
+      </div>
+      <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
+    </div>
+
+    <div id="article-container" class="card" style="display: none;">
+      <h2 style="margin: 0 0 16px 0; font-size: 1.1rem;">Article</h2>
+      <div id="article-content" class="article-content"></div>
+    </div>
   </div>
 
   <div id="explanation-panel" class="explanation-panel">
-    <span class="close-btn" id="close-panel">&times;</span>
+    <span class="close-btn" id="close-panel" aria-label="Close">&times;</span>
     <h3>Explanation</h3>
     <div class="term" id="panel-term"></div>
     <div class="content" id="panel-content"></div>
-    <button type="button" class="add-vocab-btn" id="add-vocab-btn" style="display: none;">Add to vocabulary</button>
+    <button type="button" class="btn btn-secondary add-vocab-btn" id="add-vocab-btn" style="display: none;">Add to vocabulary</button>
   </div>
 
   <script>
@@ -142,7 +130,6 @@
       currentArticle = articleInput.value.trim();
       if (!currentArticle) return;
 
-      // Render with paragraph breaks preserved
       articleContent.textContent = currentArticle;
       articleContainer.style.display = 'block';
     });
@@ -242,7 +229,7 @@
           body: JSON.stringify(lastExplanation)
         });
         if (res.ok) {
-          addVocabBtn.textContent = 'Added';
+          addVocabBtn.textContent = 'Added ✓';
           addVocabBtn.classList.add('added');
         }
       } catch (err) {

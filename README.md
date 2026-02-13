@@ -2,6 +2,8 @@
 
 ![Article Reader screenshot](assets/screenshot.png)
 
+![Vocabulary page screenshot](assets/vocabulary-screenshot.png)
+
 A minimal local web app for reading articles. Select any word or phrase to get a concise, context-aware explanation from an LLM.
 
 ## Setup

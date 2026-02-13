@@ -3,133 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vocabulary</title>
+  <title>Vocabulary - Article Reader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
   <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: Georgia, serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-      line-height: 1.6;
-      color: #333;
-    }
-    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
-    .load-actions { margin-bottom: 20px; }
-    button {
-      padding: 8px 16px;
-      font-size: 14px;
-      cursor: pointer;
-      background: #333;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      margin-right: 8px;
-    }
-    button:hover { background: #555; }
-    button.secondary {
-      background: #f0f0f0;
-      color: #333;
-      border: 1px solid #ccc;
-    }
-    button.secondary:hover { background: #e5e5e5; }
-    input[type="file"] { display: none; }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 16px;
-    }
-    th, td {
-      padding: 10px 12px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background: #f5f5f5;
-      font-weight: 600;
-    }
-    tr:hover { background: #fafafa; }
-    .empty { color: #888; font-style: italic; padding: 24px; }
-    .back-link { font-size: 14px; margin-bottom: 16px; }
-    .back-link a { color: #333; }
-    input, select {
-      width: 100%;
-      padding: 6px 8px;
-      font-size: 14px;
-      font-family: inherit;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    select { cursor: pointer; min-width: 60px; }
-    .btn-delete {
-      padding: 4px 10px;
-      font-size: 12px;
-      background: #c33;
-      color: white;
-    }
-    .btn-delete:hover { background: #a22; }
-    .filters {
-      margin: 16px 0;
-      padding: 12px;
-      background: #f9f9f9;
-      border-radius: 4px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-    }
-    .filters label { font-size: 14px; font-weight: 500; }
-    .filters select { width: auto; min-width: 100px; }
+    .btn-delete { padding: 6px 12px; font-size: 12px; }
+    table input, table select { margin: 0; }
+    table td:last-child { width: 90px; }
   </style>
 </head>
 <body>
-  <p class="back-link">
-    <a href="/">&larr; Back to Article Reader</a> &middot;
-    <a href="/summary" target="_blank">Summary</a>
-  </p>
-  <h1>Vocabulary</h1>
+  <div class="page">
+    <nav class="nav">
+      <a href="/" class="brand">&larr; Article Reader</a>
+      <a href="/">Reader</a>
+      <a href="/summary" target="_blank">Summary</a>
+    </nav>
 
-  <div class="load-actions">
-    <button id="load-default">Load saved vocabulary</button>
-    <button class="secondary" id="load-csv-btn">Load from CSV file</button>
-    <input type="file" id="csv-input" accept=".csv">
-  </div>
+    <h1>Vocabulary</h1>
+    <p class="subtitle">Manage your saved words. Edit inline and filter by importance or date.</p>
 
-  <div id="filters" class="filters" style="display: none;">
-    <label>Importance:</label>
-    <select id="filter-importance">
-      <option value="">All</option>
-      <option value="1">1</option>
-      <option value="2">2</option>
-      <option value="3">3</option>
-      <option value="4">4</option>
-      <option value="5">5</option>
-    </select>
-    <label>Date range:</label>
-    <select id="filter-date">
-      <option value="">All</option>
-      <option value="1">Last 1 day</option>
-      <option value="3">Last 3 days</option>
-      <option value="7">Last 1 week</option>
-      <option value="14">Last 2 weeks</option>
-      <option value="30">Last 1 month</option>
-    </select>
-  </div>
+    <div class="action-bar">
+      <button id="load-default" class="btn btn-primary">Load saved vocabulary</button>
+      <button id="load-csv-btn" class="btn btn-secondary">Load from CSV file</button>
+      <input type="file" id="csv-input" accept=".csv" style="display: none;">
+    </div>
 
-  <div id="table-container">
-    <p class="empty" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
-    <table id="vocab-table" style="display: none;">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Word</th>
-          <th>Meaning</th>
-          <th>Importance</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="vocab-body"></tbody>
-    </table>
+    <div id="filters" class="filters" style="display: none;">
+      <label>Importance</label>
+      <select id="filter-importance">
+        <option value="">All</option>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+      <label>Date range</label>
+      <select id="filter-date">
+        <option value="">All</option>
+        <option value="1">Last 1 day</option>
+        <option value="3">Last 3 days</option>
+        <option value="7">Last 1 week</option>
+        <option value="14">Last 2 weeks</option>
+        <option value="30">Last 1 month</option>
+      </select>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div id="table-container">
+        <p class="empty-state" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
+        <div class="table-wrap" id="table-wrap" style="display: none;">
+          <table id="vocab-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Word</th>
+                <th>Meaning</th>
+                <th>Importance</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="vocab-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -137,6 +78,7 @@
     const loadCsvBtn = document.getElementById('load-csv-btn');
     const csvInput = document.getElementById('csv-input');
     const emptyMsg = document.getElementById('empty-msg');
+    const tableWrap = document.getElementById('table-wrap');
     const vocabTable = document.getElementById('vocab-table');
     const vocabBody = document.getElementById('vocab-body');
     const filtersDiv = document.getElementById('filters');
@@ -189,11 +131,12 @@
           ? (allEntries.length ? 'No entries match the filter.' : 'No entries found.')
           : 'Click "Load saved vocabulary" to view your words.';
         emptyMsg.style.display = 'block';
-        vocabTable.style.display = 'none';
+        emptyMsg.className = 'empty-state';
+        tableWrap.style.display = 'none';
         return;
       }
       emptyMsg.style.display = 'none';
-      vocabTable.style.display = 'table';
+      tableWrap.style.display = 'block';
       vocabBody.innerHTML = toRender.map((e, i) => {
         const origIdx = indices[i];
         const word = escapeHtml(e.word || '');
@@ -207,7 +150,7 @@
               <td><input type="text" value="${word}" data-field="word"></td>
               <td><input type="text" value="${meaning}" data-field="concise_meaning"></td>
               <td><select data-field="importance">${importanceOptions(importance)}</select></td>
-              <td><button type="button" class="btn-delete" data-index="${i}">Delete</button></td>
+              <td><button type="button" class="btn btn-danger btn-delete" data-index="${origIdx}">Delete</button></td>
             </tr>
           `;
         }
