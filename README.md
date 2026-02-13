@@ -1,6 +1,6 @@
 # Article Reader with Contextual LLM Word Explanation
 
-![Article Reader screenshot](assets/screenshot.png)
+![Article Reader screenshot](assets/home_page.png)
 
 A minimal local web app for reading articles and EPUB books. Paste text or import an EPUB, then select any word or phrase to get a concise, context-aware explanation from an LLM.
 
