@@ -1,8 +1,8 @@
 # Article Reader
 
-![Article Reader](assets/home_page.png)
+Read anything, tap any word for instant AI explanations, and build a vocabulary you'll actually remember—with quizzes that stick.
 
-A local web app for reading articles and EPUB books with AI-powered word explanations. Build vocabulary, track progress, and quiz yourself.
+![Article Reader](assets/home_page.png)
 
 ## Features
 
