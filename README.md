@@ -10,22 +10,13 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Set your LLM API key via environment variable. **Gemini is used if its key is set**; otherwise OpenAI is used.
+Set your Gemini API key (get one at https://aistudio.google.com/apikey):
 
-**Gemini (recommended):**
 ```bash
 export GEMINI_API_KEY="your-gemini-api-key"
 ```
 
-**OpenAI:**
-```bash
-export OPENAI_API_KEY="your-api-key"
-```
-
-Optional:
-- `GEMINI_MODEL` – Gemini model name (default: `gemini-2.5-flash`)
-- `OPENAI_BASE_URL` – Use a different API endpoint (e.g., Ollama: `http://localhost:11434/v1`)
-- `OPENAI_MODEL` – OpenAI model name (default: `gpt-4o-mini`)
+Optional: `GEMINI_MODEL` – model name (default: `gemini-2.5-flash`)
 
 ## Run
 

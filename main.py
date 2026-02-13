@@ -92,7 +92,13 @@ Your response:""".format(
             )
             explanation = response.text.strip()
         else:
-            from openai import OpenAI
+            if not OPENAI_API_KEY and not OPENAI_BASE_URL:
+                return "Error: No LLM configured. Set GEMINI_API_KEY (for Gemini) or OPENAI_API_KEY (for OpenAI). See README for setup."
+
+            try:
+                from openai import OpenAI
+            except ImportError:
+                return "Error: OpenAI backend requires 'pip install openai'. Or set GEMINI_API_KEY to use Gemini instead."
 
             client_kwargs = {"api_key": OPENAI_API_KEY or "not-needed"}
             if OPENAI_BASE_URL:
