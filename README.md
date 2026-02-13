@@ -1,8 +1,16 @@
-# Article Reader with Contextual LLM Word Explanation
+# Article Reader
 
-![Article Reader screenshot](assets/home_page.png)
+![Article Reader](assets/home_page.png)
 
-A minimal local web app for reading articles and EPUB books. Paste text or import an EPUB, then select any word or phrase to get a concise, context-aware explanation from an LLM.
+A local web app for reading articles and EPUB books with AI-powered word explanations. Build vocabulary, track progress, and quiz yourself.
+
+## Features
+
+- **Read** — Paste text or import EPUB books
+- **Explain** — Select any word or phrase for contextual AI explanation (Gemini or OpenAI)
+- **Vocabulary** — Save words, set importance, filter by date and status
+- **Quiz** — Test yourself: see a word, rate recall (Master/Vague/Don't remember), then reveal the meaning
+- **Progress** — Reading position and progress bar for EPUBs
 
 ## Setup
 
@@ -12,26 +20,16 @@ pip install -r requirements.txt
 
 ## Configuration
 
-Create a `.env` file in the project root (copy from `.env.example`). Set **one** of:
+Create a `.env` file (copy from `.env.example`). Set **one** of:
 
-**Gemini** (preferred):
-```
-GEMINI_API_KEY=your-gemini-api-key
-```
-Get a key at https://aistudio.google.com/apikey
+| Provider | Variable | Get key |
+|----------|----------|---------|
+| Gemini (preferred) | `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| OpenAI | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
 
-**OpenAI** (used when Gemini key is not set):
-```
-OPENAI_API_KEY=your-openai-api-key
-```
-Get a key at https://platform.openai.com/api-keys
+**Security:** `.env` is in `.gitignore` — your key stays local.
 
-**Security:** Never commit `.env` — it's in `.gitignore`. Your key stays local only.
-
-Optional:
-- `GEMINI_MODEL` – Gemini model (default: `gemini-2.5-flash`)
-- `OPENAI_MODEL` – OpenAI model (default: `gpt-4o-mini`)
-- `OPENAI_BASE_URL` – For OpenAI-compatible APIs, e.g. Ollama: `http://localhost:11434/v1`
+**Optional:** `GEMINI_MODEL`, `OPENAI_MODEL`, `OPENAI_BASE_URL` (for Ollama, etc.)
 
 ## Run
 
@@ -43,12 +41,36 @@ Open http://127.0.0.1:8000
 
 ## Usage
 
-1. Paste your article into the text area, or click "Import EPUB" to load a book
-2. Click "Display Article" (or the article appears automatically after EPUB import)
-3. For EPUB books, your reading position is saved automatically and restored when you reload the same book
-3. Select a word or phrase while reading
-4. The explanation appears in a panel on the right
-5. Or press **Alt+E** (Option+E on Mac) after selecting text
+### Reading
 
-# Learn vocabulary
-![Vocabulary page screenshot](assets/vocabulary-screenshot.png)
+1. Paste your article or click **Import EPUB** to load a book
+2. Click **Display Article** (EPUB imports show automatically)
+3. Select a word or phrase → explanation appears in the right panel
+4. Press **Alt+E** (Option+E on Mac) for quick explanation
+5. Click **Add to vocabulary** to save words
+
+### Vocabulary
+
+- **View vocabulary** — Load saved words, edit inline, filter by importance, date, or status
+- **Import/export** — Load from CSV or manage the `vocabulary.csv` file directly
+
+### Quiz
+
+1. Choose importance and date range filters
+2. Start quiz — 10 random words per round
+3. See the word, choose Master / Vague / Don't remember
+4. Meaning appears after your answer; status is saved to vocabulary
+
+## Screenshots
+
+**Home** — Read articles, get AI explanations, add to vocabulary
+
+![Home](assets/home_page.png)
+
+**Vocabulary** — Manage saved words, filter by importance and status
+
+![Vocabulary](assets/vocabulary-screenshot.png)
+
+**Quiz** — Test recall, rate each word, update status
+
+![Quiz](assets/quiz-screenshot.png)

@@ -19,6 +19,7 @@
     <nav class="nav">
       <a href="/" class="brand">&larr; Article Reader</a>
       <a href="/">Reader</a>
+      <a href="/quiz">Quiz</a>
       <a href="/summary" target="_blank">Summary</a>
     </nav>
 
@@ -50,6 +51,13 @@
         <option value="14">Last 2 weeks</option>
         <option value="30">Last 1 month</option>
       </select>
+      <label>Status</label>
+      <select id="filter-status">
+        <option value="">All</option>
+        <option value="Master">Master</option>
+        <option value="Vague">Vague</option>
+        <option value="Don't remember">Don't remember</option>
+      </select>
     </div>
 
     <div class="card" style="padding: 0; overflow: hidden;">
@@ -63,6 +71,7 @@
                 <th>Word</th>
                 <th>Meaning</th>
                 <th>Importance</th>
+                <th>Status</th>
                 <th></th>
               </tr>
             </thead>
@@ -84,12 +93,18 @@
     const filtersDiv = document.getElementById('filters');
     const filterImportance = document.getElementById('filter-importance');
     const filterDate = document.getElementById('filter-date');
+    const filterStatus = document.getElementById('filter-status');
 
     let allEntries = [];
     let fromServer = false;
 
     function importanceOptions(val) {
       const opts = ['', '1', '2', '3', '4', '5'];
+      return opts.map(v => `<option value="${escapeHtml(v)}" ${v === (val || '') ? 'selected' : ''}>${v || '—'}</option>`).join('');
+    }
+
+    function statusOptions(val) {
+      const opts = ['', 'Master', 'Vague', "Don't remember"];
       return opts.map(v => `<option value="${escapeHtml(v)}" ${v === (val || '') ? 'selected' : ''}>${v || '—'}</option>`).join('');
     }
 
@@ -102,6 +117,7 @@
     function applyFilters() {
       const imp = filterImportance.value;
       const days = filterDate.value ? parseInt(filterDate.value) : null;
+      const status = filterStatus.value;
       const now = new Date();
       const cutoff = days ? new Date(now.getTime() - days * 24 * 60 * 60 * 1000) : null;
 
@@ -109,6 +125,7 @@
         .map((e, i) => [e, i])
         .filter(([e]) => {
           if (imp && (e.importance || '') !== imp) return false;
+          if (status && (e.status || '') !== status) return false;
           if (cutoff) {
             const d = parseDate(e.date);
             if (!d || d < cutoff) return false;
@@ -143,6 +160,7 @@
         const meaning = escapeHtml(e.concise_meaning || e.meaning || '');
         const date = escapeHtml(e.date || '');
         const importance = e.importance || '';
+        const status = e.status || '';
         if (fromServer) {
           return `
             <tr data-index="${origIdx}">
@@ -150,6 +168,7 @@
               <td><input type="text" value="${word}" data-field="word"></td>
               <td><input type="text" value="${meaning}" data-field="concise_meaning"></td>
               <td><select data-field="importance">${importanceOptions(importance)}</select></td>
+              <td><select data-field="status">${statusOptions(status)}</select></td>
               <td><button type="button" class="btn btn-danger btn-delete" data-index="${origIdx}">Delete</button></td>
             </tr>
           `;
@@ -160,6 +179,7 @@
             <td>${word}</td>
             <td>${meaning}</td>
             <td>${importance || '—'}</td>
+            <td>${status || '—'}</td>
             <td></td>
           </tr>
         `;
@@ -185,14 +205,15 @@
         const word = tr.querySelector('[data-field="word"]').value.trim();
         const meaning = tr.querySelector('[data-field="concise_meaning"]').value.trim();
         const importance = tr.querySelector('[data-field="importance"]').value;
+        const status = tr.querySelector('[data-field="status"]').value;
         try {
           const res = await fetch(`/api/vocabulary/${index}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ word, concise_meaning: meaning, importance })
+            body: JSON.stringify({ word, concise_meaning: meaning, importance, status })
           });
           if (res.ok) {
-            allEntries[index] = { ...allEntries[index], word, concise_meaning: meaning, importance };
+            allEntries[index] = { ...allEntries[index], word, concise_meaning: meaning, importance, status };
             renderTable(allEntries, fromServer);
           }
         } catch (err) {
@@ -224,6 +245,9 @@
       if (fromServer && allEntries.length) renderTable(allEntries, true);
     });
     filterDate.addEventListener('change', () => {
+      if (fromServer && allEntries.length) renderTable(allEntries, true);
+    });
+    filterStatus.addEventListener('change', () => {
       if (fromServer && allEntries.length) renderTable(allEntries, true);
     });
 

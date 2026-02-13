@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz - Article Reader</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+  <style>
+    .quiz-filters { margin-bottom: 24px; }
+    .quiz-card {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 32px;
+      text-align: center;
+    }
+    .quiz-word { font-size: 1.75rem; font-weight: 600; margin-bottom: 8px; }
+    .quiz-meaning { color: var(--text-muted); font-size: 1rem; margin-bottom: 28px; }
+    .quiz-meaning.hidden { visibility: hidden; min-height: 1.5em; }
+    .quiz-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .quiz-btn {
+      padding: 12px 24px;
+      font-size: 15px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: 2px solid;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .quiz-btn-master { background: #dcfce7; border-color: #22c55e; color: #166534; }
+    .quiz-btn-master:hover { background: #22c55e; color: white; }
+    .quiz-btn-vague { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+    .quiz-btn-vague:hover { background: #f59e0b; color: white; }
+    .quiz-btn-dont { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+    .quiz-btn-dont:hover { background: #ef4444; color: white; }
+    .quiz-progress { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+    .quiz-done {
+      padding: 32px;
+      text-align: center;
+    }
+    .quiz-done h2 { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <a href="/" class="brand">&larr; Article Reader</a>
+      <a href="/vocabulary">Vocabulary</a>
+      <a href="/quiz">Quiz</a>
+      <a href="/summary" target="_blank">Summary</a>
+    </nav>
+
+    <h1>Quiz</h1>
+    <p class="subtitle">Test your vocabulary. Select importance and date range, then rate each word.</p>
+
+    <div id="quiz-setup" class="card">
+      <div class="quiz-filters filters">
+        <label>Importance</label>
+        <select id="filter-importance">
+          <option value="">All</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+        <label>Date range</label>
+        <select id="filter-date">
+          <option value="">All</option>
+          <option value="1">Last 1 day</option>
+          <option value="3">Last 3 days</option>
+          <option value="7">Last 1 week</option>
+          <option value="14">Last 2 weeks</option>
+          <option value="30">Last 1 month</option>
+        </select>
+      </div>
+      <button id="start-btn" class="btn btn-primary">Start Quiz</button>
+    </div>
+
+    <div id="quiz-active" class="card quiz-card" style="display: none;">
+      <p class="quiz-progress" id="quiz-progress">1 of 10</p>
+      <div class="quiz-word" id="quiz-word"></div>
+      <div class="quiz-meaning" id="quiz-meaning"></div>
+      <div class="quiz-buttons">
+        <button type="button" class="quiz-btn quiz-btn-master" data-status="Master">Master</button>
+        <button type="button" class="quiz-btn quiz-btn-vague" data-status="Vague">Vague</button>
+        <button type="button" class="quiz-btn quiz-btn-dont" data-status="Don't remember">Don't remember</button>
+      </div>
+    </div>
+
+    <div id="quiz-done" class="card quiz-done" style="display: none;">
+      <h2>Quiz complete!</h2>
+      <p>Your answers have been saved to the vocabulary.</p>
+      <button id="again-btn" class="btn btn-primary">Start another round</button>
+    </div>
+
+    <div id="quiz-empty" class="card" style="display: none;">
+      <p class="empty-state">No vocabulary matches your filters. Add words or try different filters.</p>
+    </div>
+  </div>
+
+  <script>
+    const setupDiv = document.getElementById('quiz-setup');
+    const activeDiv = document.getElementById('quiz-active');
+    const doneDiv = document.getElementById('quiz-done');
+    const emptyDiv = document.getElementById('quiz-empty');
+    const startBtn = document.getElementById('start-btn');
+    const againBtn = document.getElementById('again-btn');
+    const filterImportance = document.getElementById('filter-importance');
+    const filterDate = document.getElementById('filter-date');
+    const quizWord = document.getElementById('quiz-word');
+    const quizMeaning = document.getElementById('quiz-meaning');
+    const quizProgress = document.getElementById('quiz-progress');
+
+    let items = [];
+    let currentIndex = 0;
+
+    startBtn.addEventListener('click', async () => {
+      const imp = filterImportance.value;
+      const days = filterDate.value ? parseInt(filterDate.value) : null;
+      const params = new URLSearchParams();
+      if (imp) params.set('importance', imp);
+      if (days) params.set('days', days.toString());
+      try {
+        const res = await fetch(`/api/quiz?${params}`);
+        const data = await res.json();
+        items = data.items || [];
+        if (items.length === 0) {
+          setupDiv.style.display = 'none';
+          activeDiv.style.display = 'none';
+          doneDiv.style.display = 'none';
+          emptyDiv.style.display = 'block';
+          return;
+        }
+        currentIndex = 0;
+        setupDiv.style.display = 'none';
+        emptyDiv.style.display = 'none';
+        activeDiv.style.display = 'block';
+        showCurrentWord();
+      } catch (err) {
+        alert('Error loading quiz: ' + err.message);
+      }
+    });
+
+    function showCurrentWord() {
+      const item = items[currentIndex];
+      quizWord.textContent = item.word || '';
+      quizMeaning.textContent = item.concise_meaning || item.meaning || '';
+      quizMeaning.classList.add('hidden');
+      quizProgress.textContent = `${currentIndex + 1} of ${items.length}`;
+      activeDiv.querySelectorAll('.quiz-btn').forEach(b => b.disabled = false);
+    }
+
+    activeDiv.querySelectorAll('.quiz-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const status = btn.dataset.status;
+        const item = items[currentIndex];
+        activeDiv.querySelectorAll('.quiz-btn').forEach(b => b.disabled = true);
+        try {
+          await fetch(`/api/vocabulary/${item.index}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+          });
+        } catch (err) {
+          console.error('Update failed:', err);
+        }
+        quizMeaning.classList.remove('hidden');
+        currentIndex++;
+        if (currentIndex >= items.length) {
+          setTimeout(() => {
+            activeDiv.style.display = 'none';
+            doneDiv.style.display = 'block';
+          }, 1500);
+        } else {
+          setTimeout(() => showCurrentWord(), 1500);
+        }
+      });
+    });
+
+    againBtn.addEventListener('click', () => {
+      doneDiv.style.display = 'none';
+      setupDiv.style.display = 'block';
+    });
+  </script>
+</body>
+</html>

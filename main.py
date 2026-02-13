@@ -10,6 +10,7 @@ load_dotenv()
 import csv
 import hashlib
 import json
+import random
 import os
 import re
 from collections import Counter
@@ -55,7 +56,7 @@ _explanation_cache: dict[str, str] = {}
 
 VOCABULARY_CSV = Path(__file__).parent / "vocabulary.csv"
 READING_POSITIONS_JSON = Path(__file__).parent / "reading_positions.json"
-VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance"]
+VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance", "status"]
 
 
 def _read_vocab_rows() -> list[dict]:
@@ -89,12 +90,14 @@ class VocabularyRequest(BaseModel):
     word: str
     concise_meaning: str
     importance: str = ""
+    status: str = ""
 
 
 class VocabularyUpdateRequest(BaseModel):
     word: str | None = None
     concise_meaning: str | None = None
     importance: str | None = None
+    status: str | None = None
 
 
 class ReadingPositionRequest(BaseModel):
@@ -298,6 +301,7 @@ def add_to_vocabulary(request: VocabularyRequest):
         "word": request.word.strip(),
         "concise_meaning": request.concise_meaning.strip(),
         "importance": (request.importance or "").strip(),
+        "status": (request.status or "").strip(),
     })
     _write_vocab_rows(rows)
     return {"status": "added"}
@@ -316,8 +320,34 @@ def update_vocabulary(index: int, request: VocabularyUpdateRequest):
         row["concise_meaning"] = request.concise_meaning.strip()
     if request.importance is not None:
         row["importance"] = str(request.importance).strip()
+    if request.status is not None:
+        row["status"] = str(request.status).strip()
     _write_vocab_rows(rows)
     return {"status": "updated"}
+
+
+@app.get("/api/quiz")
+def get_quiz_words(importance: str = "", days: int | None = None):
+    """Get 10 random vocabulary items for quiz, filtered by importance and date range."""
+    rows = _read_vocab_rows()
+    now = datetime.now()
+
+    filtered = []
+    for i, row in enumerate(rows):
+        if importance and (row.get("importance") or "") != importance:
+            continue
+        if days is not None:
+            try:
+                d = datetime.strptime(row.get("date", ""), "%Y-%m-%d")
+                if (now - d).days > days:
+                    continue
+            except ValueError:
+                continue
+        if row.get("word") or row.get("concise_meaning"):
+            filtered.append((i, row))
+
+    sample = random.sample(filtered, min(10, len(filtered)))
+    return {"items": [{"index": idx, **row} for idx, row in sample]}
 
 
 @app.delete("/api/vocabulary/{index:int}")
@@ -350,3 +380,10 @@ def summary_page():
     """Serve the vocabulary summary page."""
     static_dir = Path(__file__).parent / "static"
     return FileResponse(static_dir / "summary.html")
+
+
+@app.get("/quiz")
+def quiz_page():
+    """Serve the quiz page."""
+    static_dir = Path(__file__).parent / "static"
+    return FileResponse(static_dir / "quiz.html")
