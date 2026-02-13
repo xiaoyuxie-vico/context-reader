@@ -1,8 +1,8 @@
-# Read with Context — AI Word Explanations & Vocabulary
+# Context Reader — AI-powered word explanations and vocabulary
 
 Read articles and books with AI-powered contextual explanations. Select any word or phrase to get instant definitions, examples, and expressions. Save words to a vocabulary, quiz yourself, and track your progress.
 
-![Read with Context](assets/home_page.png)
+![Context Reader](assets/home_page.png)
 
 ## Features
 
