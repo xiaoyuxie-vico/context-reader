@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/usage.js"></script>
   <style>
     .chart-container {
       display: flex;
@@ -77,6 +78,11 @@
     <h1>Vocabulary Summary</h1>
     <p class="subtitle">Words added per date</p>
 
+    <div id="usage-card" class="card" style="margin-bottom: 20px;">
+      <p style="margin: 0; font-size: 15px;"><strong>Total time in app</strong></p>
+      <p id="usage-time" style="margin: 8px 0 0 0; font-size: 1.25rem; color: var(--accent);">—</p>
+    </div>
+
     <div class="card">
       <div id="chart-container" class="chart-container" style="display: none;"></div>
       <p class="empty-state" id="empty-msg">Loading...</p>
@@ -92,12 +98,23 @@
     const chartContainer = document.getElementById('chart-container');
     const emptyMsg = document.getElementById('empty-msg');
 
+    function formatUsage(seconds) {
+      if (!seconds) return '0 min';
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      if (h > 0) return h + 'h ' + m + 'm';
+      return m + ' min';
+    }
+
     async function loadSummary() {
       try {
         const res = await fetch('/api/vocabulary/summary');
         const data = await res.json();
         const byDate = data.by_date || {};
         const entries = Object.entries(byDate);
+        const totalSeconds = data.total_usage_seconds || 0;
+
+        document.getElementById('usage-time').textContent = formatUsage(totalSeconds);
 
         if (!entries.length) {
           emptyMsg.textContent = 'No vocabulary data yet. Add words from the Article Reader.';

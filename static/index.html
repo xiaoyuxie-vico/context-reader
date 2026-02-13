@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/usage.js"></script>
   <style>
     .article-content {
       font-family: var(--font-reading);
@@ -77,6 +78,14 @@
       background: var(--success) !important;
       color: white !important;
     }
+    .chat-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+    .chat-messages { max-height: 200px; overflow-y: auto; margin-bottom: 12px; }
+    .chat-msg { margin-bottom: 10px; font-size: 13px; }
+    .chat-msg.user { color: var(--text-muted); }
+    .chat-msg.user::before { content: 'You: '; font-weight: 600; }
+    .chat-msg.assistant { color: var(--text); }
+    .chat-input-row { display: flex; gap: 8px; }
+    .chat-input-row input { flex: 1; padding: 8px 12px; font-size: 13px; }
     #article-scroll {
       max-height: 65vh;
       overflow-y: auto;
@@ -151,6 +160,14 @@
     <div class="term" id="panel-term"></div>
     <div class="content" id="panel-content"></div>
     <button type="button" class="btn btn-secondary add-vocab-btn" id="add-vocab-btn" style="display: none;">Add to vocabulary</button>
+    <div id="chat-section" class="chat-section" style="display: none;">
+      <p style="margin: 0 0 8px 0; font-size: 12px; color: var(--text-muted);">Ask a follow-up to dive deeper</p>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" placeholder="e.g. Can you give more examples?">
+        <button type="button" class="btn btn-primary" id="chat-send" style="padding: 8px 16px;">Send</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -168,6 +185,10 @@
     const panelContent = document.getElementById('panel-content');
     const closePanelBtn = document.getElementById('close-panel');
     const addVocabBtn = document.getElementById('add-vocab-btn');
+    const chatSection = document.getElementById('chat-section');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
     const progressFill = document.getElementById('progress-fill');
     const progressPct = document.getElementById('progress-pct');
 
@@ -183,6 +204,7 @@
     let currentBookId = null;
     let lastExplanation = { word: '', concise_meaning: '' };
     let savePositionTimeout = null;
+    let chatContext = null;
 
     submitBtn.addEventListener('click', () => {
       currentBookId = null;
@@ -275,31 +297,38 @@
       epubInput.value = '';
     });
 
-    function getSentenceContaining(text, fullText) {
+    function getSentencesContaining(text, fullText, numSentences = 1) {
       const idx = fullText.indexOf(text);
       if (idx === -1) return text;
 
-      const before = fullText.slice(0, idx);
-      const after = fullText.slice(idx + text.length);
+      const sentences = fullText.split(/(?<=[.!?])\s+/);
+      let pos = 0;
+      let sentenceIndex = 0;
+      for (let i = 0; i < sentences.length; i++) {
+        const end = pos + sentences[i].length;
+        if (idx >= pos && idx < end) {
+          sentenceIndex = i;
+          break;
+        }
+        pos = end + 1;
+      }
 
-      const lastDot = Math.max(before.lastIndexOf('.'), before.lastIndexOf('?'), before.lastIndexOf('!'));
-      const start = lastDot === -1 ? 0 : lastDot + 1;
-
-      const enders = [after.indexOf('.'), after.indexOf('?'), after.indexOf('!')].filter(x => x >= 0);
-      const endOffset = enders.length ? Math.min(...enders) + 1 : after.length;
-      const end = idx + text.length + endOffset;
-
-      return fullText.slice(start, end).trim();
+      const half = Math.floor(numSentences / 2);
+      const start = Math.max(0, sentenceIndex - half);
+      const end = Math.min(sentences.length, start + numSentences);
+      return sentences.slice(start, end).join(' ').trim();
     }
 
     async function explainSelection() {
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
 
-      if (!selectedText || selectedText.length > 100) return;
+      if (!selectedText || selectedText.length > 1000) return;
       if (!currentArticle) return;
 
-      const fullSentence = getSentenceContaining(selectedText, currentArticle);
+      const wordCount = selectedText.split(/\s+/).filter(Boolean).length;
+      const numSentences = wordCount > 5 ? 3 : 1;
+      const fullSentence = getSentencesContaining(selectedText, currentArticle, numSentences);
 
       explanationPanel.classList.add('visible');
       panelTerm.textContent = '"' + selectedText + '"';
@@ -307,13 +336,18 @@
       panelContent.className = 'content loading';
       addVocabBtn.style.display = 'none';
 
+      chatSection.style.display = 'none';
+      chatMessages.innerHTML = '';
+      chatContext = null;
+
       try {
         const res = await fetch('/api/explain', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             selected_text: selectedText,
-            full_sentence: fullSentence
+            full_sentence: fullSentence,
+            phrase_mode: wordCount > 5
           })
         });
         const data = await res.json();
@@ -325,6 +359,14 @@
         addVocabBtn.style.display = 'block';
         addVocabBtn.textContent = 'Add to vocabulary';
         addVocabBtn.classList.remove('added');
+
+        chatContext = {
+          selectedText,
+          fullSentence,
+          phraseMode: wordCount > 5,
+          messages: [{ role: 'assistant', content: raw }]
+        };
+        chatSection.style.display = 'block';
       } catch (err) {
         panelContent.textContent = 'Error: ' + err.message;
         panelContent.className = 'content';
@@ -372,6 +414,61 @@
     closePanelBtn.addEventListener('click', () => {
       explanationPanel.classList.remove('visible');
     });
+
+    function appendChatMessage(role, content) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg ' + role;
+      if (role === 'assistant') {
+        div.innerHTML = formatExplanation(content);
+      } else {
+        div.textContent = content;
+      }
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    chatSend.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
+
+    async function sendChatMessage() {
+      const text = chatInput.value.trim();
+      if (!text || !chatContext) return;
+
+      chatInput.value = '';
+      chatContext.messages.push({ role: 'user', content: text });
+      appendChatMessage('user', text);
+
+      chatSend.disabled = true;
+      const placeholder = document.createElement('div');
+      placeholder.className = 'chat-msg assistant';
+      placeholder.textContent = '...';
+      chatMessages.appendChild(placeholder);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      try {
+        const res = await fetch('/api/explain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            selected_text: chatContext.selectedText,
+            full_sentence: chatContext.fullSentence,
+            phrase_mode: chatContext.phraseMode,
+            messages: chatContext.messages
+          })
+        });
+        const data = await res.json();
+        const reply = data.explanation || 'No response.';
+        placeholder.remove();
+        appendChatMessage('assistant', reply);
+        chatContext.messages.push({ role: 'assistant', content: reply });
+      } catch (err) {
+        placeholder.remove();
+        appendChatMessage('assistant', 'Error: ' + err.message);
+      }
+      chatSend.disabled = false;
+    }
 
     addVocabBtn.addEventListener('click', async () => {
       if (!lastExplanation.word || !lastExplanation.concise_meaning) return;

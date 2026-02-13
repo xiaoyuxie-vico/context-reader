@@ -56,6 +56,7 @@ _explanation_cache: dict[str, str] = {}
 
 VOCABULARY_CSV = Path(__file__).parent / "vocabulary.csv"
 READING_POSITIONS_JSON = Path(__file__).parent / "reading_positions.json"
+USAGE_STATS_JSON = Path(__file__).parent / "usage_stats.json"
 VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance", "status"]
 
 
@@ -81,9 +82,16 @@ def _write_vocab_rows(rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ExplainRequest(BaseModel):
     selected_text: str
     full_sentence: str
+    phrase_mode: bool = False
+    messages: list[ChatMessage] = []
 
 
 class VocabularyRequest(BaseModel):
@@ -104,6 +112,10 @@ class ReadingPositionRequest(BaseModel):
     book_id: str
     position: int
     filename: str = ""
+
+
+class UsageRequest(BaseModel):
+    seconds: int
 
 
 def _html_to_plain_text(html: bytes) -> str:
@@ -151,13 +163,62 @@ def extract_concise_meaning(explanation: str) -> str:
     return ""
 
 
-def get_llm_explanation(selected_text: str, full_sentence: str) -> str:
+def get_llm_chat_response(
+    selected_text: str, full_sentence: str, messages: list[dict]
+) -> str:
+    """Chat completion for follow-up questions."""
+    conv = "\n\n".join(
+        f"**{'User' if m['role'] == 'user' else 'Assistant'}:** {m['content']}"
+        for m in messages
+    )
+    prompt = f"""You are a language tutor. The user selected "{selected_text}" in this context: "{full_sentence}".
+
+Previous conversation:
+{conv}
+
+Answer the user's follow-up question. Be clear and helpful."""
+
+    try:
+        if GEMINI_API_KEY:
+            from google import genai
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt,
+            )
+            return response.text.strip()
+        else:
+            from openai import OpenAI
+            client_kwargs = {"api_key": OPENAI_API_KEY or "not-needed"}
+            if OPENAI_BASE_URL:
+                client_kwargs["base_url"] = OPENAI_BASE_URL
+            client = OpenAI(**client_kwargs)
+            response = client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+def get_llm_explanation(selected_text: str, full_sentence: str, phrase_mode: bool = False) -> str:
     """Call LLM API for contextual explanation."""
-    cache_key = f"{selected_text}|{full_sentence}"
+    cache_key = f"{selected_text}|{full_sentence}|{phrase_mode}"
     if cache_key in _explanation_cache:
         return _explanation_cache[cache_key]
 
-    prompt = """You are a language tutor. Explain the selected word or phrase in the specific sentence context.
+    if phrase_mode:
+        prompt = """You are a language tutor. Explain this sentence in a clear, easy-to-understand way.
+
+Selected text: "{selected_text}"
+Context: "{full_sentence}"
+
+Explain the sentence clearly. Be concise.""".format(
+            selected_text=selected_text, full_sentence=full_sentence
+        )
+    else:
+        prompt = """You are a language tutor. Explain the selected word or phrase in the specific sentence context.
 
 Use this exact format (use **bold** for keywords):
 
@@ -170,8 +231,8 @@ Selected text: "{selected_text}"
 Full sentence: "{full_sentence}"
 
 Your response:""".format(
-        selected_text=selected_text, full_sentence=full_sentence
-    )
+            selected_text=selected_text, full_sentence=full_sentence
+        )
 
     try:
         if GEMINI_API_KEY:
@@ -284,9 +345,23 @@ def save_reading_position(request: ReadingPositionRequest):
 
 @app.post("/api/explain")
 def explain(request: ExplainRequest):
-    """Get contextual explanation for selected text."""
-    explanation = get_llm_explanation(request.selected_text, request.full_sentence)
-    concise_meaning = extract_concise_meaning(explanation)
+    """Get contextual explanation or chat follow-up."""
+    if request.messages:
+        explanation = get_llm_chat_response(
+            request.selected_text,
+            request.full_sentence,
+            [{"role": m.role, "content": m.content} for m in request.messages],
+        )
+        concise_meaning = ""
+    else:
+        explanation = get_llm_explanation(
+            request.selected_text, request.full_sentence, request.phrase_mode
+        )
+        concise_meaning = (
+            explanation.strip()
+            if request.phrase_mode
+            else extract_concise_meaning(explanation)
+        )
     return {"explanation": explanation, "concise_meaning": concise_meaning}
 
 
@@ -295,6 +370,25 @@ def get_vocabulary():
     """Return vocabulary CSV data as JSON."""
     entries = _read_vocab_rows()
     return {"entries": entries}
+
+
+def _load_usage_stats() -> dict:
+    """Load usage statistics."""
+    if not USAGE_STATS_JSON.exists():
+        return {"total_seconds": 0}
+    try:
+        with open(USAGE_STATS_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {"total_seconds": 0}
+
+
+def _add_usage_seconds(seconds: int) -> None:
+    """Add seconds to total usage."""
+    data = _load_usage_stats()
+    data["total_seconds"] = data.get("total_seconds", 0) + seconds
+    with open(USAGE_STATS_JSON, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 
 @app.get("/api/vocabulary/summary")
@@ -306,7 +400,16 @@ def get_vocabulary_summary():
         if row.get("date"):
             counts[row["date"]] += 1
     by_date = dict(sorted(counts.items()))
-    return {"by_date": by_date}
+    usage = _load_usage_stats()
+    return {"by_date": by_date, "total_usage_seconds": usage.get("total_seconds", 0)}
+
+
+@app.post("/api/usage")
+def record_usage(request: UsageRequest):
+    """Record usage time (seconds)."""
+    if request.seconds > 0 and request.seconds < 86400:
+        _add_usage_seconds(request.seconds)
+    return {"status": "ok"}
 
 
 @app.post("/api/vocabulary")

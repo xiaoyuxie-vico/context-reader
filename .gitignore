@@ -4,6 +4,7 @@ books/
 *.txt
 vocabulary.csv
 reading_positions.json
+usage_stats.json
 .env
 .env.*
 !.env.example

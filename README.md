@@ -8,6 +8,7 @@ Read anything, tap any word for instant AI explanations, and build a vocabulary 
 
 - **Read** — Paste text or import EPUB/TXT files
 - **Explain** — Select any word or phrase for contextual AI explanation (Gemini or OpenAI)
+- **Chat** — Ask follow-up questions to dive deeper; keep the conversation going with the LLM
 - **Vocabulary** — Save words, set importance, filter by date and status
 - **Quiz** — Test yourself: see a word, rate recall (Master/Vague/Don't remember), then reveal the meaning
 - **Progress** — Reading position and progress bar for EPUBs
@@ -47,7 +48,8 @@ Open http://127.0.0.1:8000
 2. Click **Display Article** (EPUB imports show automatically)
 3. Select a word or phrase → explanation appears in the right panel
 4. Press **Alt+E** (Option+E on Mac) for quick explanation
-5. Click **Add to vocabulary** to save words
+5. Use the follow-up chat to ask more (e.g. "Can you give more examples?") — the LLM keeps context
+6. Click **Add to vocabulary** to save words
 
 ### Vocabulary
 
@@ -63,9 +65,9 @@ Open http://127.0.0.1:8000
 
 ## Screenshots
 
-**Home** — Read articles, get AI explanations, add to vocabulary
+**Article Reader** — Read articles, get AI explanations, chat with the LLM to dive deeper, add to vocabulary
 
-![Home](assets/home_page.png)
+![Article Reader](assets/home_page.png)
 
 **Vocabulary** — Manage saved words, filter by importance and status
 
