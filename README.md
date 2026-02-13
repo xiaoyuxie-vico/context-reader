@@ -1,17 +1,17 @@
-# Article Reader
+# Read with Context — AI Word Explanations & Vocabulary
 
-Read anything, tap any word for instant AI explanations, and build a vocabulary you'll actually remember—with quizzes that stick.
+Read articles and books with AI-powered contextual explanations. Select any word or phrase to get instant definitions, examples, and expressions. Save words to a vocabulary, quiz yourself, and track your progress.
 
-![Article Reader](assets/home_page.png)
+![Read with Context](assets/home_page.png)
 
 ## Features
 
-- **Read** — Paste text or import EPUB/TXT files
-- **Explain** — Select any word or phrase for contextual AI explanation (Gemini or OpenAI)
-- **Chat** — Ask follow-up questions to dive deeper; keep the conversation going with the LLM
-- **Vocabulary** — Save words, set importance, filter by date and status
-- **Quiz** — Test yourself: see a word, rate recall (Master/Vague/Don't remember), then reveal the meaning
-- **Progress** — Reading position and progress bar for EPUBs
+- **Read** — Paste text or import EPUB/TXT files. Customize display (background, font size, serif/sans). Reading position and progress bar for EPUBs. Recent items in reading history.
+- **Explain** — Select any word or phrase for contextual AI explanation (Gemini or OpenAI). Shows meaning, meaning in sentence, examples, and expressions. Words in your vocabulary are highlighted in the article.
+- **Chat** — Ask follow-up questions to dive deeper; the LLM keeps conversation context.
+- **Vocabulary** — Save words from explanations. Edit inline, set importance (1–5), filter by date and status. Bulk update or delete. Import/export CSV.
+- **Quiz** — Test recall: see a word, choose Master / Vague / Don't remember, then the meaning appears. After 3 seconds, the next word loads. Filter by importance, date range, or status.
+- **Summary** — Bar chart of words added per date and total time in app.
 
 ## Setup
 
@@ -46,21 +46,32 @@ Open http://127.0.0.1:8000
 
 1. Paste your article or click **Import EPUB** / **Import TXT** to load a file
 2. Click **Display Article** (EPUB imports show automatically)
-3. Select a word or phrase → explanation appears in the right panel
-4. Use the follow-up chat to ask more (e.g. "Can you give more examples?") — the LLM keeps context
-5. Click **Add to vocabulary** to save words
+3. Adjust **Background**, **Size**, and **Font** to your preference
+4. Select a word or phrase → explanation appears in the right panel
+5. Use the follow-up chat to ask more (e.g. "Can you give more examples?")
+6. Click **Add to vocabulary** to save words
+7. Reopen recent articles from **Reading history**
 
 ### Vocabulary
 
-- **View vocabulary** — Load saved words, edit inline, filter by importance, date, or status
-- **Import/export** — Load from CSV or manage the `vocabulary.csv` file directly
+- **Load saved vocabulary** — View words from `vocabulary.csv`
+- **Load from CSV** — Import from another file
+- **Filters** — Importance (1–5), date range, status (Master/Vague/Don't remember)
+- **Edit inline** — Change word, meaning, importance, or status
+- **Bulk actions** — Select rows, then delete or update status/importance
+- **Export** — Save or manage `vocabulary.csv` directly
 
 ### Quiz
 
-1. Choose importance and date range filters
+1. Choose filters (importance, date range, status)
 2. Start quiz — 10 random words per round
 3. See the word, choose Master / Vague / Don't remember
-4. Meaning appears after your answer; status is saved to vocabulary
+4. Meaning appears; after 3 seconds, the next word loads
+5. Status is saved to vocabulary
+
+### Summary
+
+View a bar chart of words added per date and total time spent in the app.
 
 ## Screenshots
 
