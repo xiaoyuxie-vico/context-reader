@@ -56,8 +56,11 @@ _explanation_cache: dict[str, str] = {}
 
 VOCABULARY_CSV = Path(__file__).parent / "vocabulary.csv"
 READING_POSITIONS_JSON = Path(__file__).parent / "reading_positions.json"
+READING_HISTORY_JSON = Path(__file__).parent / "reading_history.json"
+CACHED_CONTENT_DIR = Path(__file__).parent / "cached_content"
 USAGE_STATS_JSON = Path(__file__).parent / "usage_stats.json"
-VOCAB_HEADERS = ["date", "word", "concise_meaning", "importance", "status"]
+VOCAB_HEADERS = ["date", "word", "concise_meaning", "explanation", "importance", "status"]
+MAX_READING_HISTORY = 20
 
 
 def _read_vocab_rows() -> list[dict]:
@@ -97,6 +100,7 @@ class ExplainRequest(BaseModel):
 class VocabularyRequest(BaseModel):
     word: str
     concise_meaning: str
+    explanation: str = ""
     importance: str = ""
     status: str = ""
 
@@ -104,6 +108,7 @@ class VocabularyRequest(BaseModel):
 class VocabularyUpdateRequest(BaseModel):
     word: str | None = None
     concise_meaning: str | None = None
+    explanation: str | None = None
     importance: str | None = None
     status: str | None = None
 
@@ -122,6 +127,19 @@ class ReadingPositionRequest(BaseModel):
     book_id: str
     position: int
     filename: str = ""
+
+
+class ReadingHistoryAddRequest(BaseModel):
+    title: str
+    type: str  # pasted, txt, epub
+    content_id: str
+    book_id: str = ""
+    filename: str = ""
+    content: str = ""  # for pasted/txt; epub uses cached content
+
+
+class ReadingHistoryUpdateRequest(BaseModel):
+    title: str
 
 
 class UsageRequest(BaseModel):
@@ -296,6 +314,41 @@ def _save_reading_position(book_id: str, position: int, filename: str = "") -> N
         json.dump(data, f, indent=2)
 
 
+def _load_reading_history() -> list[dict]:
+    """Load reading history list."""
+    if not READING_HISTORY_JSON.exists():
+        return []
+    try:
+        with open(READING_HISTORY_JSON, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_reading_history(entries: list[dict]) -> None:
+    """Save reading history list."""
+    with open(READING_HISTORY_JSON, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2)
+
+
+def _save_cached_content(content_id: str, text: str) -> None:
+    """Save text content to cache."""
+    CACHED_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    path = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    path.write_text(text, encoding="utf-8")
+
+
+def _load_cached_content(content_id: str) -> str | None:
+    """Load text content from cache."""
+    path = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    if not path.exists():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
 @app.post("/api/import-txt")
 async def import_txt(file: UploadFile):
     """Read text from uploaded TXT file."""
@@ -329,6 +382,7 @@ async def import_epub(file: UploadFile):
         text = _extract_text_from_epub(content)
         if not text.strip():
             raise HTTPException(status_code=400, detail="No text content found in the EPUB file")
+        _save_cached_content(book_id, text)
         return {"text": text, "filename": file.filename, "book_id": book_id}
     except HTTPException:
         raise
@@ -351,6 +405,75 @@ def save_reading_position(request: ReadingPositionRequest):
     """Save reading position for a book."""
     _save_reading_position(request.book_id, request.position, request.filename)
     return {"status": "saved"}
+
+
+@app.get("/api/reading-history")
+def get_reading_history():
+    """Return list of recent articles/books."""
+    entries = _load_reading_history()
+    return {"entries": entries}
+
+
+@app.post("/api/reading-history")
+def add_reading_history(request: ReadingHistoryAddRequest):
+    """Add an item to reading history. Caches content for pasted/txt."""
+    if request.content:
+        _save_cached_content(request.content_id, request.content)
+    entries = _load_reading_history()
+    entry = {
+        "id": hashlib.sha256(f"{request.content_id}{datetime.now().isoformat()}".encode()).hexdigest()[:16],
+        "title": request.title[:80],
+        "type": request.type,
+        "content_id": request.content_id,
+        "book_id": request.book_id,
+        "filename": request.filename,
+        "timestamp": datetime.now().isoformat(),
+    }
+    entries = [e for e in entries if e.get("content_id") != request.content_id]
+    entries.insert(0, entry)
+    entries = entries[:MAX_READING_HISTORY]
+    _save_reading_history(entries)
+    return {"status": "added", "id": entry["id"]}
+
+
+@app.get("/api/reading-history/{item_id}/content")
+def get_reading_history_content(item_id: str):
+    """Get content for a history item (for reopen)."""
+    entries = _load_reading_history()
+    entry = next((e for e in entries if e.get("id") == item_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Not found")
+    content_id = entry.get("content_id")
+    if not content_id:
+        raise HTTPException(status_code=404, detail="No content")
+    text = _load_cached_content(content_id)
+    if text is None:
+        raise HTTPException(status_code=404, detail="Content no longer available")
+    return {"text": text, "book_id": entry.get("book_id", ""), "content_id": entry.get("content_id", ""), "filename": entry.get("filename", "")}
+
+
+@app.delete("/api/reading-history/{item_id}")
+def delete_reading_history(item_id: str):
+    """Remove an item from reading history."""
+    entries = _load_reading_history()
+    entries = [e for e in entries if e.get("id") != item_id]
+    _save_reading_history(entries)
+    return {"status": "deleted"}
+
+
+@app.put("/api/reading-history/{item_id}")
+def update_reading_history(item_id: str, request: ReadingHistoryUpdateRequest):
+    """Rename a reading history item."""
+    title = (request.title or "").strip()[:80]
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    entries = _load_reading_history()
+    for e in entries:
+        if e.get("id") == item_id:
+            e["title"] = title
+            _save_reading_history(entries)
+            return {"status": "updated"}
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 @app.post("/api/explain")
@@ -430,6 +553,7 @@ def add_to_vocabulary(request: VocabularyRequest):
         "date": datetime.now().strftime("%Y-%m-%d"),
         "word": request.word.strip(),
         "concise_meaning": request.concise_meaning.strip(),
+        "explanation": (request.explanation or "").strip(),
         "importance": (request.importance or "").strip(),
         "status": (request.status or "").strip(),
     })
@@ -448,6 +572,8 @@ def update_vocabulary(index: int, request: VocabularyUpdateRequest):
         row["word"] = request.word.strip()
     if request.concise_meaning is not None:
         row["concise_meaning"] = request.concise_meaning.strip()
+    if request.explanation is not None:
+        row["explanation"] = str(request.explanation).strip()
     if request.importance is not None:
         row["importance"] = str(request.importance).strip()
     if request.status is not None:
@@ -457,14 +583,16 @@ def update_vocabulary(index: int, request: VocabularyUpdateRequest):
 
 
 @app.get("/api/quiz")
-def get_quiz_words(importance: str = "", days: int | None = None):
-    """Get 10 random vocabulary items for quiz, filtered by importance and date range."""
+def get_quiz_words(importance: str = "", days: int | None = None, status: str = ""):
+    """Get 10 random vocabulary items for quiz, filtered by importance, date range, and status."""
     rows = _read_vocab_rows()
     now = datetime.now()
 
     filtered = []
     for i, row in enumerate(rows):
         if importance and (row.get("importance") or "") != importance:
+            continue
+        if status and (row.get("status") or "") != status:
             continue
         if days is not None:
             try:

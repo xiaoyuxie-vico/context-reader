@@ -4,6 +4,8 @@ books/
 *.txt
 vocabulary.csv
 reading_positions.json
+reading_history.json
+cached_content/
 usage_stats.json
 .env
 .env.*

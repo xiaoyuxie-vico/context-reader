@@ -27,12 +27,21 @@
       padding: 0 2px;
       border-radius: 2px;
       border-bottom: 1px dotted var(--accent);
+      cursor: default;
+    }
+    .vocab-tooltip {
+      position: fixed; z-index: 1001; max-width: 320px; padding: 12px 14px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg); font-size: 13px; line-height: 1.5; color: var(--text);
+      pointer-events: none;
     }
     .explanation-panel {
       position: fixed;
       top: 24px;
       right: 24px;
       width: 340px;
+      min-width: 260px;
+      max-width: 560px;
       max-height: 85vh;
       overflow-y: auto;
       background: var(--bg-card);
@@ -43,6 +52,20 @@
       z-index: 1000;
       display: none;
       border: 1px solid var(--border);
+    }
+    .explanation-panel .panel-resize {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      cursor: col-resize;
+      background: transparent;
+    }
+    .explanation-panel .panel-resize:hover,
+    .explanation-panel .panel-resize.dragging {
+      background: var(--accent);
+      opacity: 0.3;
     }
     .explanation-panel.visible { display: block; animation: slideIn 0.2s ease; }
     @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
@@ -125,21 +148,43 @@
       min-width: 3.5em;
       font-weight: 500;
     }
-    .font-size-control { display: flex; align-items: center; }
-    .font-size-btns { display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-    .font-size-btn {
-      padding: 6px 12px; font-size: 12px; font-weight: 500; border: none; background: var(--bg-card);
-      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+    .reading-controls {
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      padding: 10px 14px; background: var(--bg); border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
     }
-    .font-size-btn:hover { background: var(--bg); color: var(--text); }
-    .font-size-btn.active { background: var(--accent); color: white; }
-    .font-family-control { display: flex; align-items: center; }
-    .font-family-btn {
-      padding: 6px 12px; font-size: 12px; font-weight: 500; border: none; background: var(--bg-card);
-      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+    .reading-control { display: flex; align-items: center; gap: 8px; }
+    .reading-control label {
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+      white-space: nowrap;
     }
-    .font-family-btn:hover { background: var(--bg); color: var(--text); }
-    .font-family-btn.active { background: var(--accent); color: white; }
+    .reading-control select {
+      font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm);
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+      min-width: 88px;
+    }
+    .reading-control .segmented {
+      display: flex; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      overflow: hidden; background: var(--bg-card);
+    }
+    .reading-control .segmented button {
+      padding: 6px 12px; font-size: 12px; font-weight: 500; border: none;
+      background: var(--bg-card); color: var(--text-muted); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .reading-control .segmented button:hover { background: var(--bg); color: var(--text); }
+    .reading-control .segmented button.active { background: var(--accent); color: white; }
+    .history-list { list-style: none; margin: 0; padding: 0; }
+    .history-list li { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .history-list li:last-child { border-bottom: none; }
+    .history-list .history-title { color: var(--text); cursor: pointer; flex: 1; }
+    .history-list .history-title:hover { color: var(--accent); }
+    .history-list .history-meta { font-size: 12px; color: var(--text-muted); margin-left: 12px; }
+    .history-list .history-type { font-size: 11px; padding: 2px 6px; border-radius: 4px; background: var(--bg); color: var(--text-muted); }
+    .history-list .history-delete,
+    .history-list .history-rename { padding: 4px 8px; font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; border-radius: var(--radius-sm); }
+    .history-list .history-delete:hover { color: var(--danger); background: var(--bg); }
+    .history-list .history-rename:hover { color: var(--accent); background: var(--bg); }
   </style>
 </head>
 <body>
@@ -163,16 +208,20 @@
         <input type="file" id="txt-input" accept=".txt" style="display: none;">
       </div>
       <textarea id="article-input" placeholder="Paste your article here, or import an EPUB or TXT file..."></textarea>
-      <p class="hint">Tip: Select text and press Alt+E (or Option+E on Mac) for quick explanation.</p>
+    </div>
+
+    <div id="reading-history-card" class="card" style="display: none;">
+      <h3 style="margin: 0 0 12px 0; font-size: 0.95rem; color: var(--text-muted);">Reading history</h3>
+      <ul id="reading-history-list" class="history-list"></ul>
     </div>
 
     <div id="article-container" class="card" style="display: none;">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
         <h2 style="margin: 0; font-size: 1.1rem;">Article</h2>
-        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-          <div class="reading-bg-control">
-            <label for="bg-color" style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Background</label>
-            <select id="bg-color" style="font-size: 13px; padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-card); color: var(--text);">
+        <div class="reading-controls">
+          <div class="reading-control">
+            <label for="bg-color">Background</label>
+            <select id="bg-color">
               <option value="white">White</option>
               <option value="cream">Cream</option>
               <option value="sepia">Sepia</option>
@@ -181,17 +230,17 @@
               <option value="gray">Soft gray</option>
             </select>
           </div>
-          <div class="font-size-control">
-            <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Size</span>
-            <div class="font-size-btns" role="group" aria-label="Font size">
+          <div class="reading-control">
+            <label>Size</label>
+            <div class="segmented" role="group" aria-label="Font size">
               <button type="button" class="font-size-btn" data-size="small">S</button>
               <button type="button" class="font-size-btn active" data-size="medium">M</button>
               <button type="button" class="font-size-btn" data-size="large">L</button>
             </div>
           </div>
-          <div class="font-family-control">
-            <span style="font-size: 12px; color: var(--text-muted); margin-right: 8px;">Font</span>
-            <div class="font-size-btns" role="group" aria-label="Font family">
+          <div class="reading-control">
+            <label>Font</label>
+            <div class="segmented" role="group" aria-label="Font family">
               <button type="button" class="font-family-btn active" data-family="serif">Serif</button>
               <button type="button" class="font-family-btn" data-family="sans">Sans</button>
             </div>
@@ -208,7 +257,10 @@
     </div>
   </div>
 
+  <div id="vocab-tooltip" class="vocab-tooltip" style="display: none;"></div>
+
   <div id="explanation-panel" class="explanation-panel">
+    <div class="panel-resize" id="panel-resize" title="Drag to resize"></div>
     <span class="close-btn" id="close-panel" aria-label="Close">&times;</span>
     <h3>Explanation</h3>
     <div class="term" id="panel-term"></div>
@@ -322,6 +374,7 @@
       bgColorSelect.value = savedBg;
     }
     applyReadingBg();
+    loadReadingHistory();
 
     function updateProgress() {
       const { scrollTop, scrollHeight, clientHeight } = articleScroll;
@@ -333,10 +386,127 @@
 
     let currentArticle = '';
     let currentBookId = null;
+    let currentPositionKey = null;
     let lastExplanation = { word: '', concise_meaning: '' };
     let savePositionTimeout = null;
     let chatContext = null;
-    let cachedVocabWords = null;
+    let cachedVocab = null;
+
+    function simpleHash(s) {
+      let h = 0;
+      for (let i = 0; i < Math.min(s.length, 50000); i++) {
+        h = ((h << 5) - h) + s.charCodeAt(i);
+        h = h & h;
+      }
+      return 'h' + Math.abs(h).toString(36);
+    }
+
+    async function addToReadingHistory(title, type, contentId, bookId, filename, content) {
+      try {
+        await fetch('/api/reading-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, type, content_id: contentId, book_id: bookId || '', filename: filename || '', content: content || '' })
+        });
+        loadReadingHistory();
+      } catch (_) {}
+    }
+
+    async function loadReadingHistory() {
+      try {
+        const res = await fetch('/api/reading-history');
+        const data = await res.json();
+        const entries = data.entries || [];
+        const list = document.getElementById('reading-history-list');
+        const card = document.getElementById('reading-history-card');
+        if (!entries.length) {
+          card.style.display = 'none';
+          return;
+        }
+        card.style.display = 'block';
+        list.innerHTML = entries.map(e => {
+          const typeLabel = e.type === 'epub' ? 'EPUB' : (e.type === 'txt' ? 'TXT' : 'Pasted');
+          const meta = e.filename ? ` · ${e.filename}` : '';
+          return `<li><span class="history-title" data-id="${e.id}">${escapeHtml(e.title)}</span><span class="history-meta"><span class="history-type">${typeLabel}</span>${meta}</span><button type="button" class="history-rename" data-id="${e.id}" data-title="${escapeHtml(e.title)}" title="Rename">✎</button><button type="button" class="history-delete" data-id="${e.id}" title="Remove from history">×</button></li>`;
+        }).join('');
+        list.querySelectorAll('.history-title').forEach(el => {
+          el.addEventListener('click', () => reopenHistoryItem(el.dataset.id));
+        });
+        list.querySelectorAll('.history-rename').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renameHistoryItem(btn.dataset.id, btn.dataset.title);
+          });
+        });
+        list.querySelectorAll('.history-delete').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteHistoryItem(btn.dataset.id);
+          });
+        });
+      } catch (_) {}
+    }
+
+    async function renameHistoryItem(id, currentTitle) {
+      const title = prompt('Rename:', currentTitle || '');
+      if (title == null || title.trim() === '') return;
+      try {
+        const res = await fetch(`/api/reading-history/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: title.trim() })
+        });
+        if (res.ok) loadReadingHistory();
+        else alert('Could not rename');
+      } catch (_) {
+        alert('Could not rename');
+      }
+    }
+
+    async function deleteHistoryItem(id) {
+      if (!confirm('Remove this item from reading history?')) return;
+      try {
+        const res = await fetch(`/api/reading-history/${id}`, { method: 'DELETE' });
+        if (res.ok) loadReadingHistory();
+      } catch (_) {}
+    }
+
+    async function reopenHistoryItem(id) {
+      try {
+        const res = await fetch(`/api/reading-history/${id}/content`);
+        const data = await res.json();
+        currentArticle = data.text;
+        currentBookId = data.book_id || null;
+        currentPositionKey = data.content_id || data.book_id || null;
+        articleInput.value = data.text;
+        await setArticleContent(data.text);
+        articleContainer.style.display = 'block';
+        articleScroll.scrollTop = 0;
+        const histRes = await fetch('/api/reading-history');
+        const histData = await histRes.json();
+        const entry = (histData.entries || []).find(e => e.id === id);
+        if (entry) {
+          await addToReadingHistory(entry.title, entry.type, entry.content_id, entry.book_id || '', entry.filename || '', currentBookId ? '' : data.text);
+        }
+        const posKey = data.content_id || data.book_id;
+        if (posKey) {
+          const posRes = await fetch(`/api/reading-position?book_id=${posKey}`);
+          const posData = await posRes.json();
+          if (posData.position != null) {
+            requestAnimationFrame(() => {
+              articleScroll.scrollTop = posData.position;
+              updateProgress();
+            });
+          } else {
+            updateProgress();
+          }
+        } else {
+          updateProgress();
+        }
+      } catch (err) {
+        alert('Could not load: ' + (err.message || 'Content no longer available'));
+      }
+    }
 
     function escapeHtml(text) {
       const div = document.createElement('div');
@@ -348,34 +518,79 @@
       return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
-    function renderArticleWithHighlights(text, vocabWords) {
+    function renderArticleWithHighlights(text, vocabEntries) {
       if (!text) return '';
       let html = escapeHtml(text);
-      if (!vocabWords || vocabWords.length === 0) return html;
-      const words = [...new Set(vocabWords.map(w => (w || '').trim()).filter(Boolean))].sort((a, b) => b.length - a.length);
+      if (!vocabEntries || vocabEntries.length === 0) return html;
+      const byWord = {};
+      for (const e of vocabEntries) {
+        const w = (e.word || '').trim();
+        if (w) byWord[w.toLowerCase()] = { word: w, explanation: e.explanation || '' };
+      }
+      const words = [...new Set(Object.keys(byWord).map(k => byWord[k].word))].sort((a, b) => b.length - a.length);
       for (const word of words) {
         const re = escapeRegex(word);
         const regex = new RegExp(`(\\b)(${re})(\\b)`, 'gi');
-        html = html.replace(regex, '$1<span class="vocab-highlight">$2</span>$3');
+        const expl = (byWord[word.toLowerCase()]?.explanation || '')
+          .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
+        html = html.replace(regex, (_, b, m, a) => `${b}<span class="vocab-highlight" data-explanation="${expl}">${m}</span>${a || ''}`);
       }
       return html;
     }
 
     async function setArticleContent(text) {
-      if (!cachedVocabWords) {
+      if (!cachedVocab) {
         try {
           const res = await fetch('/api/vocabulary');
           const data = await res.json();
-          cachedVocabWords = (data.entries || []).map(e => e.word).filter(Boolean);
+          cachedVocab = data.entries || [];
         } catch (_) {
-          cachedVocabWords = [];
+          cachedVocab = [];
         }
       }
-      articleContent.innerHTML = renderArticleWithHighlights(text, cachedVocabWords);
+      articleContent.innerHTML = renderArticleWithHighlights(text, cachedVocab);
+      articleContent.querySelectorAll('.vocab-highlight').forEach(span => {
+        span.addEventListener('mouseenter', showVocabTooltip);
+        span.addEventListener('mouseleave', hideVocabTooltip);
+      });
     }
 
     function invalidateVocabCache() {
-      cachedVocabWords = null;
+      cachedVocab = null;
+    }
+
+    let vocabTooltipTimeout = null;
+    const vocabTooltip = document.getElementById('vocab-tooltip');
+
+    function showVocabTooltip(e) {
+      const expl = e.target.getAttribute('data-explanation');
+      if (!expl || !expl.trim()) return;
+      clearTimeout(vocabTooltipTimeout);
+      vocabTooltipTimeout = setTimeout(() => {
+        const decoded = expl.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
+        vocabTooltip.innerHTML = formatExplanation(decoded);
+        vocabTooltip.style.display = 'block';
+        requestAnimationFrame(() => positionVocabTooltip(e));
+      }, 300);
+    }
+
+    function hideVocabTooltip() {
+      clearTimeout(vocabTooltipTimeout);
+      vocabTooltipTimeout = setTimeout(() => {
+        vocabTooltip.style.display = 'none';
+      }, 100);
+    }
+
+    function positionVocabTooltip(e) {
+      const rect = e.target.getBoundingClientRect();
+      const tooltipRect = vocabTooltip.getBoundingClientRect();
+      let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+      let top = rect.top - tooltipRect.height - 8;
+      if (top < 8) top = rect.bottom + 8;
+      if (left < 8) left = 8;
+      if (left + tooltipRect.width > window.innerWidth - 8) left = window.innerWidth - tooltipRect.width - 8;
+      vocabTooltip.style.left = left + 'px';
+      vocabTooltip.style.top = top + 'px';
     }
 
     submitBtn.addEventListener('click', async () => {
@@ -383,9 +598,23 @@
       currentArticle = articleInput.value.trim();
       if (!currentArticle) return;
 
+      const contentId = simpleHash(currentArticle);
+      currentPositionKey = contentId;
       await setArticleContent(currentArticle);
       articleContainer.style.display = 'block';
-      requestAnimationFrame(() => requestAnimationFrame(updateProgress));
+      articleScroll.scrollTop = 0;
+      const title = currentArticle.slice(0, 50) + (currentArticle.length > 50 ? '…' : '');
+      await addToReadingHistory(title, 'pasted', contentId, '', '', currentArticle);
+      const posRes = await fetch(`/api/reading-position?book_id=${contentId}`);
+      const posData = await posRes.json();
+      if (posData.position != null) {
+        requestAnimationFrame(() => {
+          articleScroll.scrollTop = posData.position;
+          updateProgress();
+        });
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(updateProgress));
+      }
     });
 
     importEpubBtn.addEventListener('click', () => epubInput.click());
@@ -412,10 +641,23 @@
         articleInput.value = data.text;
         currentArticle = data.text;
         currentBookId = null;
+        const contentId = simpleHash(data.text);
+        currentPositionKey = contentId;
         await setArticleContent(data.text);
         articleContainer.style.display = 'block';
         articleScroll.scrollTop = 0;
-        updateProgress();
+        const title = (data.filename || 'Imported text').replace(/\.[^.]+$/, '');
+        await addToReadingHistory(title, 'txt', contentId, '', data.filename || '', data.text);
+        const posRes = await fetch(`/api/reading-position?book_id=${contentId}`);
+        const posData = await posRes.json();
+        if (posData.position != null) {
+          requestAnimationFrame(() => {
+            articleScroll.scrollTop = posData.position;
+            updateProgress();
+          });
+        } else {
+          updateProgress();
+        }
       } catch (err) {
         alert('Error: ' + err.message);
       }
@@ -445,22 +687,24 @@
         articleInput.value = data.text;
         currentArticle = data.text;
         currentBookId = data.book_id;
+        currentPositionKey = data.book_id;
         await setArticleContent(data.text);
         articleContainer.style.display = 'block';
         articleScroll.scrollTop = 0;
-        if (currentBookId) {
-          const posRes = await fetch(`/api/reading-position?book_id=${currentBookId}`);
-          const posData = await posRes.json();
-          if (posData.position != null) {
+        const title = (data.filename || 'Imported book').replace(/\.[^.]+$/, '');
+        await addToReadingHistory(title, 'epub', data.book_id, data.book_id, data.filename || '', '');
+        const posRes = await fetch(`/api/reading-position?book_id=${data.book_id}`);
+        const posData = await posRes.json();
+        if (posData.position != null) {
+          requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                articleScroll.scrollTop = posData.position;
-                updateProgress();
-              });
+              articleScroll.scrollTop = posData.position;
+              updateProgress();
             });
-          }
+          });
+        } else {
+          updateProgress();
         }
-        updateProgress();
       } catch (err) {
         alert('Error: ' + err.message);
       }
@@ -527,7 +771,7 @@
         panelContent.innerHTML = formatExplanation(raw);
         panelContent.className = 'content';
 
-        lastExplanation = { word: selectedText, concise_meaning: data.concise_meaning || '' };
+        lastExplanation = { word: selectedText, concise_meaning: data.concise_meaning || '', explanation: raw };
         addVocabBtn.style.display = 'block';
         addVocabBtn.textContent = 'Add to vocabulary';
         addVocabBtn.classList.remove('added');
@@ -556,13 +800,13 @@
 
     articleScroll.addEventListener('scroll', () => {
       updateProgress();
-      if (!currentBookId) return;
+      if (!currentPositionKey) return;
       clearTimeout(savePositionTimeout);
       savePositionTimeout = setTimeout(() => {
         fetch('/api/reading-position', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ book_id: currentBookId, position: articleScroll.scrollTop, filename: '' })
+          body: JSON.stringify({ book_id: currentPositionKey, position: articleScroll.scrollTop, filename: '' })
         }).catch(() => {});
       }, 500);
     });
@@ -576,16 +820,39 @@
       }, 10);
     });
 
-    document.addEventListener('keydown', (e) => {
-      if ((e.altKey || e.metaKey) && e.key === 'e') {
-        e.preventDefault();
-        explainSelection();
-      }
-    });
-
     closePanelBtn.addEventListener('click', () => {
       explanationPanel.classList.remove('visible');
     });
+
+    (function initPanelResize() {
+      const resizeHandle = document.getElementById('panel-resize');
+      const MIN = 260, MAX = 560;
+      let startX = 0, startW = 0;
+      function onMove(e) {
+        const dx = startX - e.clientX;
+        const w = Math.min(MAX, Math.max(MIN, startW + dx));
+        explanationPanel.style.width = w + 'px';
+      }
+      function onUp() {
+        resizeHandle.classList.remove('dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        try { localStorage.setItem('explanation_panel_width', explanationPanel.style.width); } catch (_) {}
+      }
+      resizeHandle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        startX = e.clientX;
+        startW = explanationPanel.offsetWidth;
+        resizeHandle.classList.add('dragging');
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+      const saved = (() => { try { return localStorage.getItem('explanation_panel_width'); } catch (_) { return null; } })();
+      if (saved) {
+        const w = parseInt(saved, 10);
+        if (w >= MIN && w <= MAX) explanationPanel.style.width = w + 'px';
+      }
+    })();
 
     function appendChatMessage(role, content) {
       const div = document.createElement('div');
@@ -649,7 +916,11 @@
         const res = await fetch('/api/vocabulary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(lastExplanation)
+          body: JSON.stringify({
+            word: lastExplanation.word,
+            concise_meaning: lastExplanation.concise_meaning,
+            explanation: lastExplanation.explanation || ''
+          })
         });
         if (res.ok) {
           addVocabBtn.textContent = 'Added ✓';

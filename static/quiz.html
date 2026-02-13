@@ -76,6 +76,13 @@
           <option value="14">Last 2 weeks</option>
           <option value="30">Last 1 month</option>
         </select>
+        <label>Status</label>
+        <select id="filter-status">
+          <option value="">All</option>
+          <option value="Vague">Vague only</option>
+          <option value="Don't remember">Don't remember only</option>
+          <option value="Master">Master only</option>
+        </select>
       </div>
       <button id="start-btn" class="btn btn-primary">Start Quiz</button>
     </div>
@@ -111,6 +118,7 @@
     const againBtn = document.getElementById('again-btn');
     const filterImportance = document.getElementById('filter-importance');
     const filterDate = document.getElementById('filter-date');
+    const filterStatus = document.getElementById('filter-status');
     const quizWord = document.getElementById('quiz-word');
     const quizMeaning = document.getElementById('quiz-meaning');
     const quizProgress = document.getElementById('quiz-progress');
@@ -121,9 +129,11 @@
     startBtn.addEventListener('click', async () => {
       const imp = filterImportance.value;
       const days = filterDate.value ? parseInt(filterDate.value) : null;
+      const status = filterStatus.value;
       const params = new URLSearchParams();
       if (imp) params.set('importance', imp);
       if (days) params.set('days', days.toString());
+      if (status) params.set('status', status);
       try {
         const res = await fetch(`/api/quiz?${params}`);
         const data = await res.json();
@@ -174,9 +184,9 @@
           setTimeout(() => {
             activeDiv.style.display = 'none';
             doneDiv.style.display = 'block';
-          }, 1500);
+          }, 3000);
         } else {
-          setTimeout(() => showCurrentWord(), 1500);
+          setTimeout(() => showCurrentWord(), 3000);
         }
       });
     });

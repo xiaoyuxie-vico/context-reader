@@ -47,9 +47,8 @@ Open http://127.0.0.1:8000
 1. Paste your article or click **Import EPUB** / **Import TXT** to load a file
 2. Click **Display Article** (EPUB imports show automatically)
 3. Select a word or phrase → explanation appears in the right panel
-4. Press **Alt+E** (Option+E on Mac) for quick explanation
-5. Use the follow-up chat to ask more (e.g. "Can you give more examples?") — the LLM keeps context
-6. Click **Add to vocabulary** to save words
+4. Use the follow-up chat to ask more (e.g. "Can you give more examples?") — the LLM keeps context
+5. Click **Add to vocabulary** to save words
 
 ### Vocabulary
 
