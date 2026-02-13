@@ -65,10 +65,6 @@ Open http://127.0.0.1:8000
 
 ## Screenshots
 
-**Article Reader** — Read articles, get AI explanations, chat with the LLM to dive deeper, add to vocabulary
-
-![Article Reader](assets/home_page.png)
-
 **Vocabulary** — Manage saved words, filter by importance and status
 
 ![Vocabulary](assets/vocabulary-screenshot.png)
