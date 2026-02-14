@@ -583,8 +583,9 @@ def update_vocabulary(index: int, request: VocabularyUpdateRequest):
 
 
 @app.get("/api/quiz")
-def get_quiz_words(importance: str = "", days: int | None = None, status: str = ""):
-    """Get 10 random vocabulary items for quiz, filtered by importance, date range, and status."""
+def get_quiz_words(importance: str = "", days: int | None = None, status: str = "", count: int = 10):
+    """Get random vocabulary items for quiz, filtered by importance, date range, and status."""
+    count = min(50, max(1, count))  # clamp to 1–50
     rows = _read_vocab_rows()
     now = datetime.now()
 
@@ -604,7 +605,7 @@ def get_quiz_words(importance: str = "", days: int | None = None, status: str = 
         if row.get("word") or row.get("concise_meaning"):
             filtered.append((i, row))
 
-    sample = random.sample(filtered, min(10, len(filtered)))
+    sample = random.sample(filtered, min(count, len(filtered)))
     return {"items": [{"index": idx, **row} for idx, row in sample]}
 
 

@@ -23,6 +23,7 @@
     .bulk-actions select { padding: 6px 10px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--border); }
     .row-cb { cursor: pointer; }
     .row-cb { width: 18px; height: 18px; }
+    .importance-legend { font-weight: 400; color: var(--text-muted); font-size: 12px; }
   </style>
 </head>
 <body>
@@ -40,11 +41,12 @@
     <div class="action-bar">
       <button id="load-default" class="btn btn-primary">Load saved vocabulary</button>
       <button id="load-csv-btn" class="btn btn-secondary">Load from CSV file</button>
+      <button id="export-csv-btn" class="btn btn-secondary">Export to CSV</button>
       <input type="file" id="csv-input" accept=".csv" style="display: none;">
     </div>
 
     <div id="filters" class="filters" style="display: none;">
-      <label>Importance</label>
+      <label>Importance <span class="importance-legend">(1=low, 5=high)</span></label>
       <select id="filter-importance">
         <option value="">All</option>
         <option value="1">1</option>
@@ -81,7 +83,7 @@
           <option value="Vague">Vague</option>
           <option value="Don't remember">Don't remember</option>
         </select>
-        <select id="bulk-importance">
+        <select id="bulk-importance" title="1=low, 5=high">
           <option value="">Set importance...</option>
           <option value="1">1</option>
           <option value="2">2</option>
@@ -93,7 +95,7 @@
         <button type="button" id="bulk-clear-btn" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Clear selection</button>
       </div>
       <div id="table-container">
-        <p class="empty-state" id="empty-msg">Click "Load saved vocabulary" to view your words.</p>
+        <p class="empty-state" id="empty-msg">Loading...</p>
         <div class="table-wrap" id="table-wrap" style="display: none;">
           <table id="vocab-table">
             <thead>
@@ -363,7 +365,10 @@
       if (fromServer && allEntries.length) renderTable(allEntries, true);
     });
 
-    loadDefaultBtn.addEventListener('click', async () => {
+    async function loadVocabulary() {
+      emptyMsg.textContent = 'Loading...';
+      emptyMsg.style.display = 'block';
+      tableWrap.style.display = 'none';
       try {
         const res = await fetch('/api/vocabulary');
         const data = await res.json();
@@ -372,9 +377,38 @@
         emptyMsg.textContent = 'Error loading: ' + err.message;
         emptyMsg.style.display = 'block';
       }
-    });
+    }
+
+    loadDefaultBtn.addEventListener('click', loadVocabulary);
+
+    loadVocabulary();
 
     loadCsvBtn.addEventListener('click', () => csvInput.click());
+
+    document.getElementById('export-csv-btn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/vocabulary');
+        const data = await res.json();
+        const entries = data.entries || [];
+        const headers = ['date', 'word', 'concise_meaning', 'explanation', 'importance', 'status'];
+        function escapeCsv(val) {
+          const s = String(val ?? '');
+          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        }
+        const csv = [headers.join(','), ...entries.map(e => headers.map(h => escapeCsv(e[h])).join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'vocabulary.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch (err) {
+        alert('Export failed: ' + err.message);
+      }
+    });
 
     csvInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
