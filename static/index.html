@@ -1221,16 +1221,23 @@
       return sentences.slice(start, end).join(' ').trim();
     }
 
+    const MAX_SELECTION_WORDS = 400;
+
     async function explainSelection() {
       const selection = window.getSelection();
       const selectedText = selection.toString().trim();
 
-      if (!selectedText || selectedText.length > 1000) return;
+      if (!selectedText) return;
       if (!currentArticle) return;
 
       const wordCount = selectedText.split(/\s+/).filter(Boolean).length;
+      if (wordCount > MAX_SELECTION_WORDS) {
+        alert(`Please select no more than ${MAX_SELECTION_WORDS} words (you selected ${wordCount}).`);
+        return;
+      }
+
       const numSentences = wordCount > 5 ? 3 : 1;
-      const fullSentence = getSentencesContaining(selectedText, currentArticle, numSentences);
+      const fullSentence = wordCount > 50 ? selectedText : getSentencesContaining(selectedText, currentArticle, numSentences);
 
       explanationPanel.classList.add('visible');
       if (window._showResizeHint) window._showResizeHint();
@@ -1276,8 +1283,21 @@
       }
     }
 
+    const EXPLANATION_EMOJIS = [
+      [/1\.\s*\*\*Meaning\*\*:/g, '1. 📖 **Meaning**:'],
+      [/2\.\s*\*\*Meaning in this sentence\*\*:/g, '2. 📝 **Meaning in this sentence**:'],
+      [/3\.\s*\*\*Examples\*\*:/g, '3. 💡 **Examples**:'],
+      [/4\.\s*\*\*Expressions\*\*:/g, '4. 🔗 **Expressions**:'],
+      [/5\.\s*\*\*Why this word here\?\*\*:/g, '5. 🤔 **Why this word here?**:'],
+      [/6\.\s*\*\*Register & formality\*\*:/g, '6. 🎯 **Register & formality**:'],
+    ];
+
     function formatExplanation(text) {
-      const escaped = text
+      let s = text;
+      for (const [re, replacement] of EXPLANATION_EMOJIS) {
+        s = s.replace(re, replacement);
+      }
+      const escaped = s
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
