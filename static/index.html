@@ -245,6 +245,7 @@
       border: 1px solid var(--border);
     }
     .reading-control { display: flex; align-items: center; gap: 8px; }
+    .reading-control .checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
     .reading-control label {
       font-size: 12px; font-weight: 500; color: var(--text-muted);
       white-space: nowrap;
@@ -276,6 +277,10 @@
     .history-list .history-rename { padding: 4px 8px; font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; border-radius: var(--radius-sm); }
     .history-list .history-delete:hover { color: var(--danger); background: var(--bg); }
     .history-list .history-rename:hover { color: var(--accent); background: var(--bg); }
+    .history-list li.history-item-collapsed { display: none; }
+    .history-list.expanded li.history-item-collapsed { display: flex; }
+    .history-toggle-btn { margin-top: 8px; padding: 6px 12px; font-size: 12px; color: var(--accent); background: none; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+    .history-toggle-btn:hover { background: var(--bg); border-color: var(--accent); }
     .article-layout { display: flex; gap: 20px; margin-top: 12px; min-height: 0; }
     .vocab-sidebar {
       flex-shrink: 0;
@@ -381,6 +386,7 @@
     <div id="reading-history-card" class="card" style="display: none;">
       <h3 style="margin: 0 0 12px 0; font-size: 0.95rem; color: var(--text-muted);">Reading history</h3>
       <ul id="reading-history-list" class="history-list"></ul>
+      <button type="button" id="history-toggle-more" class="history-toggle-btn" style="display: none;">Show more</button>
     </div>
 
     <div id="article-container" class="card" style="display: none;">
@@ -412,6 +418,12 @@
               <button type="button" class="font-family-btn active" data-family="serif">Serif</button>
               <button type="button" class="font-family-btn" data-family="sans">Sans</button>
             </div>
+          </div>
+          <div class="reading-control">
+            <label class="checkbox-label">
+              <input type="checkbox" id="show-vocab-sidebar" checked>
+              Words in this article
+            </label>
           </div>
         </div>
       </div>
@@ -553,6 +565,13 @@
     if (savedBg && BG_COLORS[savedBg]) {
       bgColorSelect.value = savedBg;
     }
+
+    const showVocabSidebarCheckbox = document.getElementById('show-vocab-sidebar');
+    showVocabSidebarCheckbox.checked = getShowVocabSidebar();
+    showVocabSidebarCheckbox.addEventListener('change', () => {
+      setShowVocabSidebar(showVocabSidebarCheckbox.checked);
+      updateVocabSidebar(currentArticle, cachedVocab || []);
+    });
     applyReadingBg();
     loadReadingHistory();
 
@@ -599,16 +618,25 @@
         const entries = data.entries || [];
         const list = document.getElementById('reading-history-list');
         const card = document.getElementById('reading-history-card');
+        const toggleBtn = document.getElementById('history-toggle-more');
         if (!entries.length) {
           card.style.display = 'none';
           return;
         }
         card.style.display = 'block';
-        list.innerHTML = entries.map(e => {
+        list.classList.remove('expanded');
+        list.innerHTML = entries.map((e, i) => {
           const typeLabel = e.type === 'epub' ? 'EPUB' : (e.type === 'txt' ? 'TXT' : 'Pasted');
           const meta = e.filename ? ` · ${e.filename}` : '';
-          return `<li><span class="history-title" data-id="${e.id}">${escapeHtml(e.title)}</span><span class="history-meta"><span class="history-type">${typeLabel}</span>${meta}</span><button type="button" class="history-rename" data-id="${e.id}" data-title="${escapeHtml(e.title)}" title="Rename">✎</button><button type="button" class="history-delete" data-id="${e.id}" title="Remove from history">×</button></li>`;
+          const collapsedClass = i >= 5 ? 'history-item-collapsed' : '';
+          return `<li${collapsedClass ? ` class="${collapsedClass}"` : ''}><span class="history-title" data-id="${e.id}">${escapeHtml(e.title)}</span><span class="history-meta"><span class="history-type">${typeLabel}</span>${meta}</span><button type="button" class="history-rename" data-id="${e.id}" data-title="${escapeHtml(e.title)}" title="Rename">✎</button><button type="button" class="history-delete" data-id="${e.id}" title="Remove from history">×</button></li>`;
         }).join('');
+        if (entries.length > 5) {
+          toggleBtn.style.display = 'block';
+          toggleBtn.textContent = `Show more (${entries.length - 5})`;
+        } else {
+          toggleBtn.style.display = 'none';
+        }
         list.querySelectorAll('.history-title').forEach(el => {
           el.addEventListener('click', () => reopenHistoryItem(el.dataset.id));
         });
@@ -624,6 +652,10 @@
             deleteHistoryItem(btn.dataset.id);
           });
         });
+        toggleBtn.onclick = () => {
+          const expanded = list.classList.toggle('expanded');
+          toggleBtn.textContent = expanded ? 'Show less' : `Show more (${entries.length - 5})`;
+        };
       } catch (_) {}
     }
 
@@ -698,6 +730,8 @@
       return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    let vocabExplanationMap = {};  // placeholder id -> explanation (for tooltip lookup)
+
     function renderArticleWithHighlights(text, vocabEntries) {
       if (!text) return '';
       let html = escapeHtml(text);
@@ -708,15 +742,42 @@
         if (w) byWord[w.toLowerCase()] = { word: w, explanation: e.explanation || '' };
       }
       const words = [...new Set(Object.keys(byWord).map(k => byWord[k].word))].sort((a, b) => b.length - a.length);
-      for (const word of words) {
+      vocabExplanationMap = {};
+      const placeholderToMatch = {};  // placeholder -> matched text
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const expl = byWord[word.toLowerCase()]?.explanation || '';
+        const ph = '\u200B\u200B\u200B' + i + '\u200B\u200B\u200B';
+        vocabExplanationMap[ph] = expl;
         const re = escapeRegex(word);
         const regex = new RegExp(`(\\b)(${re})(\\b)`, 'gi');
-        const expl = (byWord[word.toLowerCase()]?.explanation || '')
-          .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
+        html = html.replace(regex, (_, b, m, a) => {
+          placeholderToMatch[ph] = m;
+          return b + ph + (a || '');
+        });
+      }
+      for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        const ph = '\u200B\u200B\u200B' + i + '\u200B\u200B\u200B';
+        const matched = placeholderToMatch[ph] || word;
         const dataWord = escapeHtml(word.toLowerCase());
-        html = html.replace(regex, (_, b, m, a) => `${b}<span class="vocab-highlight" data-explanation="${expl}" data-word="${dataWord}">${m}</span>${a || ''}`);
+        const re = escapeRegex(ph);
+        html = html.replace(new RegExp(re, 'g'), `<span class="vocab-highlight" data-placeholder="${escapeHtml(ph)}" data-word="${dataWord}">${matched}</span>`);
       }
       return html;
+    }
+
+    const SHOW_VOCAB_SIDEBAR_KEY = 'context-reader-show-vocab-sidebar';
+
+    function getShowVocabSidebar() {
+      try {
+        const v = localStorage.getItem(SHOW_VOCAB_SIDEBAR_KEY);
+        return v === null || v === 'true';
+      } catch (_) { return true; }
+    }
+
+    function setShowVocabSidebar(show) {
+      try { localStorage.setItem(SHOW_VOCAB_SIDEBAR_KEY, String(show)); } catch (_) {}
     }
 
     function updateVocabSidebar(text, vocabEntries) {
@@ -724,10 +785,12 @@
       const list = document.getElementById('vocab-sidebar-list');
       const emptyMsg = document.getElementById('vocab-sidebar-empty');
       const countEl = document.getElementById('vocab-sidebar-count');
-      if (!text || !vocabEntries || vocabEntries.length === 0) {
+      const showPref = getShowVocabSidebar();
+      if (!showPref || !text || !vocabEntries || vocabEntries.length === 0) {
         sidebar.style.display = 'none';
-        return;
+        if (!showPref) return;
       }
+      if (!text || !vocabEntries || vocabEntries.length === 0) return;
       const inArticle = vocabEntries
         .map((e, i) => ({ ...e, index: i }))
         .filter(e => {
@@ -812,12 +875,12 @@
     const vocabTooltip = document.getElementById('vocab-tooltip');
 
     function showVocabTooltip(e) {
-      const expl = e.target.getAttribute('data-explanation');
+      const ph = e.target.getAttribute('data-placeholder');
+      const expl = ph ? vocabExplanationMap[ph] : null;
       if (!expl || !expl.trim()) return;
       clearTimeout(vocabTooltipTimeout);
       vocabTooltipTimeout = setTimeout(() => {
-        const decoded = expl.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
-        vocabTooltip.innerHTML = formatExplanation(decoded);
+        vocabTooltip.innerHTML = formatExplanation(expl);
         vocabTooltip.style.display = 'block';
         requestAnimationFrame(() => positionVocabTooltip(e));
       }, 300);
