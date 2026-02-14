@@ -204,7 +204,7 @@ def get_llm_chat_response(
 Previous conversation:
 {conv}
 
-Answer the user's follow-up question. Be clear and helpful."""
+Answer the user's follow-up question. Be direct and concise. Maximum 100 words."""
 
     try:
         if GEMINI_API_KEY:

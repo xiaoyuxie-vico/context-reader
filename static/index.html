@@ -907,26 +907,25 @@
       }
       const words = [...new Set(Object.keys(byWord).map(k => byWord[k].word))].sort((a, b) => b.length - a.length);
       vocabExplanationMap = {};
-      const placeholderToMatch = {};  // placeholder -> matched text
+      const placeholderToMatch = {};
       for (let i = 0; i < words.length; i++) {
         const word = words[i];
         const expl = byWord[word.toLowerCase()]?.explanation || '';
-        const ph = '\u200B\u200B\u200B' + i + '\u200B\u200B\u200B';
-        vocabExplanationMap[ph] = expl;
+        const phBase = '\u200B\u200B\u200B' + i + '\u200B\u200B\u200B';
+        let occ = 0;
         const re = escapeRegex(word);
         const regex = new RegExp(`(\\b)(${re})(\\b)`, 'gi');
         html = html.replace(regex, (_, b, m, a) => {
-          placeholderToMatch[ph] = m;
-          return b + ph + (a || '');
+          const uniquePh = phBase + '\u200C' + (occ++) + '\u200C';
+          vocabExplanationMap[uniquePh] = expl;
+          placeholderToMatch[uniquePh] = m;
+          return b + uniquePh + (a || '');
         });
       }
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i];
-        const ph = '\u200B\u200B\u200B' + i + '\u200B\u200B\u200B';
-        const matched = placeholderToMatch[ph] || word;
-        const dataWord = escapeHtml(word.toLowerCase());
-        const re = escapeRegex(ph);
-        html = html.replace(new RegExp(re, 'g'), `<span class="vocab-highlight" data-placeholder="${escapeHtml(ph)}" data-word="${dataWord}">${matched}</span>`);
+      for (const [uniquePh, matched] of Object.entries(placeholderToMatch)) {
+        const dataWord = (matched || '').toLowerCase().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const rePh = escapeRegex(uniquePh);
+        html = html.replace(new RegExp(rePh, 'g'), `<span class="vocab-highlight" data-placeholder="${escapeHtml(uniquePh)}" data-word="${dataWord}">${matched}</span>`);
       }
       return html;
     }
