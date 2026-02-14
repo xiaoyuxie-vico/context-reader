@@ -29,6 +29,10 @@
       border-bottom: 1px dotted var(--accent);
       cursor: default;
     }
+    @keyframes vocab-pulse {
+      0%, 100% { background: rgba(14, 165, 233, 0.12); }
+      50% { background: rgba(14, 165, 233, 0.3); }
+    }
     .vocab-tooltip {
       position: fixed; z-index: 1001; max-width: 320px; padding: 12px 14px;
       background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -202,9 +206,10 @@
     .chat-input-row { display: flex; gap: 8px; }
     .chat-input-row input { flex: 1; padding: 8px 12px; font-size: 13px; }
     #article-scroll {
+      flex: 1;
+      min-width: 0;
       max-height: 65vh;
       overflow-y: auto;
-      margin-top: 12px;
       padding: 20px;
       border-radius: var(--radius-sm);
       transition: background-color 0.2s ease;
@@ -271,6 +276,82 @@
     .history-list .history-rename { padding: 4px 8px; font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer; border-radius: var(--radius-sm); }
     .history-list .history-delete:hover { color: var(--danger); background: var(--bg); }
     .history-list .history-rename:hover { color: var(--accent); background: var(--bg); }
+    .article-layout { display: flex; gap: 20px; margin-top: 12px; min-height: 0; }
+    .vocab-sidebar {
+      flex-shrink: 0;
+      width: 200px;
+      max-height: 65vh;
+      overflow-y: auto;
+      padding: 16px;
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .vocab-sidebar h3 {
+      margin: 0 0 12px 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .vocab-sidebar-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 4px;
+    }
+    .vocab-sidebar-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .vocab-sidebar-list li {
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      color: var(--text);
+      background: var(--bg-card);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      transition: all 0.15s;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .vocab-sidebar-list li:last-child { margin-bottom: 0; }
+    .vocab-sidebar-list li:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .vocab-sidebar-list .vocab-word {
+      font-weight: 600;
+      font-size: 14px;
+      display: block;
+    }
+    .vocab-sidebar-list .vocab-meaning {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      line-height: 1.4;
+      display: block;
+    }
+    .vocab-sidebar-list .vocab-item { flex: 1; min-width: 0; }
+    .vocab-sidebar-list .vocab-delete {
+      flex-shrink: 0;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+    }
+    .vocab-sidebar-list .vocab-delete:hover { color: var(--danger); background: var(--bg); }
+    .vocab-sidebar-empty { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -338,8 +419,15 @@
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%"></div></div>
         <span class="progress-pct" id="progress-pct">0%</span>
       </div>
-      <div id="article-scroll">
-        <div id="article-content" class="article-content"></div>
+      <div class="article-layout">
+        <div id="vocab-sidebar" class="vocab-sidebar" style="display: none;">
+          <h3>Words in this article<span id="vocab-sidebar-count" class="vocab-sidebar-count"></span></h3>
+          <ul id="vocab-sidebar-list" class="vocab-sidebar-list"></ul>
+          <p id="vocab-sidebar-empty" class="vocab-sidebar-empty" style="display: none;">No saved words in this article yet.</p>
+        </div>
+        <div id="article-scroll">
+          <div id="article-content" class="article-content"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -625,9 +713,77 @@
         const regex = new RegExp(`(\\b)(${re})(\\b)`, 'gi');
         const expl = (byWord[word.toLowerCase()]?.explanation || '')
           .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '&#10;');
-        html = html.replace(regex, (_, b, m, a) => `${b}<span class="vocab-highlight" data-explanation="${expl}">${m}</span>${a || ''}`);
+        const dataWord = escapeHtml(word.toLowerCase());
+        html = html.replace(regex, (_, b, m, a) => `${b}<span class="vocab-highlight" data-explanation="${expl}" data-word="${dataWord}">${m}</span>${a || ''}`);
       }
       return html;
+    }
+
+    function updateVocabSidebar(text, vocabEntries) {
+      const sidebar = document.getElementById('vocab-sidebar');
+      const list = document.getElementById('vocab-sidebar-list');
+      const emptyMsg = document.getElementById('vocab-sidebar-empty');
+      const countEl = document.getElementById('vocab-sidebar-count');
+      if (!text || !vocabEntries || vocabEntries.length === 0) {
+        sidebar.style.display = 'none';
+        return;
+      }
+      const inArticle = vocabEntries
+        .map((e, i) => ({ ...e, index: i }))
+        .filter(e => {
+          const w = (e.word || '').trim();
+          if (!w) return false;
+          try {
+            const re = new RegExp('\\b' + escapeRegex(w) + '\\b', 'i');
+            return re.test(text);
+          } catch (_) { return false; }
+        })
+        .sort((a, b) => (a.word || '').localeCompare(b.word || '', undefined, { sensitivity: 'base' }));
+      if (inArticle.length === 0) {
+        sidebar.style.display = 'block';
+        list.innerHTML = '';
+        countEl.textContent = '';
+        emptyMsg.style.display = 'block';
+        return;
+      }
+      sidebar.style.display = 'block';
+      emptyMsg.style.display = 'none';
+      countEl.textContent = `(${inArticle.length})`;
+      list.innerHTML = inArticle.map(e => {
+        const word = escapeHtml(e.word || '');
+        const dataWord = (e.word || '').toLowerCase().replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const meaning = (e.concise_meaning || e.meaning || '').trim();
+        const meaningShort = meaning.length > 50 ? meaning.slice(0, 50) + '…' : meaning;
+        return `<li data-word="${dataWord}" data-index="${e.index}"><div class="vocab-item"><span class="vocab-word">${word}</span>${meaningShort ? `<span class="vocab-meaning">${escapeHtml(meaningShort)}</span>` : ''}</div><button type="button" class="vocab-delete" data-index="${e.index}" title="Remove from vocabulary">×</button></li>`;
+      }).join('');
+      list.querySelectorAll('li').forEach(li => {
+        li.addEventListener('click', (e) => {
+          if (e.target.closest('.vocab-delete')) return;
+          const word = li.dataset.word;
+          const span = Array.from(articleContent.querySelectorAll('.vocab-highlight')).find(s => s.dataset.word === word);
+          if (span) {
+            span.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            span.style.animation = 'none';
+            span.offsetHeight;
+            span.style.animation = 'vocab-pulse 0.6s ease';
+          }
+        });
+      });
+      list.querySelectorAll('.vocab-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const index = parseInt(btn.dataset.index, 10);
+          if (!confirm('Remove this word from your vocabulary?')) return;
+          try {
+            const res = await fetch(`/api/vocabulary/${index}`, { method: 'DELETE' });
+            if (res.ok) {
+              invalidateVocabCache();
+              if (currentArticle) await setArticleContent(currentArticle);
+            }
+          } catch (err) {
+            console.error('Delete failed:', err);
+          }
+        });
+      });
     }
 
     async function setArticleContent(text) {
@@ -645,6 +801,7 @@
         span.addEventListener('mouseenter', showVocabTooltip);
         span.addEventListener('mouseleave', hideVocabTooltip);
       });
+      updateVocabSidebar(text, cachedVocab);
     }
 
     function invalidateVocabCache() {
