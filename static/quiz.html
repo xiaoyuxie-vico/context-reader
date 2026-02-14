@@ -37,6 +37,15 @@
     .quiz-btn-dont { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
     .quiz-btn-dont:hover { background: #ef4444; color: white; }
     .quiz-progress { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+    .quiz-word-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px; }
+    .quiz-word-row .quiz-word { margin-bottom: 0; }
+    .quiz-speak-btn {
+      width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg);
+      color: var(--text-muted); cursor: pointer; transition: all 0.2s;
+    }
+    .quiz-speak-btn:hover { background: var(--accent-light); color: var(--accent); }
+    .quiz-speak-btn.speaking { background: var(--accent-light); color: var(--accent); }
     .quiz-done {
       padding: 32px;
       text-align: center;
@@ -89,7 +98,10 @@
 
     <div id="quiz-active" class="card quiz-card" style="display: none;">
       <p class="quiz-progress" id="quiz-progress">1 of 10</p>
-      <div class="quiz-word" id="quiz-word"></div>
+      <div class="quiz-word-row">
+        <div class="quiz-word" id="quiz-word"></div>
+        <button type="button" class="quiz-speak-btn" id="quiz-speak-btn" title="Listen" aria-label="Listen">🔊</button>
+      </div>
       <div class="quiz-meaning" id="quiz-meaning"></div>
       <div class="quiz-buttons">
         <button type="button" class="quiz-btn quiz-btn-master" data-status="Master">Master</button>
@@ -122,8 +134,27 @@
     const quizWord = document.getElementById('quiz-word');
     const quizMeaning = document.getElementById('quiz-meaning');
     const quizProgress = document.getElementById('quiz-progress');
+    const quizSpeakBtn = document.getElementById('quiz-speak-btn');
 
     let items = [];
+
+    function speakText(text, btn) {
+      if (!text || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = document.documentElement.lang || 'en-US';
+      u.rate = 0.9;
+      if (btn) {
+        btn.classList.add('speaking');
+        u.onend = u.onerror = () => btn.classList.remove('speaking');
+      }
+      window.speechSynthesis.speak(u);
+    }
+
+    quizSpeakBtn.addEventListener('click', () => {
+      const text = quizWord.textContent?.trim();
+      if (text) speakText(text, quizSpeakBtn);
+    });
     let currentIndex = 0;
 
     startBtn.addEventListener('click', async () => {

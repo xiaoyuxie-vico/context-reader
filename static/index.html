@@ -107,6 +107,37 @@
       background: var(--success) !important;
       color: white !important;
     }
+    .term-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .term-row .term { margin-bottom: 0; flex: 1; }
+    .speak-btn {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .speak-btn:hover {
+      background: var(--accent-light);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .speak-btn.speaking {
+      background: var(--accent-light);
+      color: var(--accent);
+    }
     .chat-section { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
     .chat-messages { max-height: 200px; overflow-y: auto; margin-bottom: 12px; }
     .chat-msg { margin-bottom: 10px; font-size: 13px; }
@@ -208,6 +239,7 @@
         <input type="file" id="txt-input" accept=".txt" style="display: none;">
       </div>
       <textarea id="article-input" placeholder="Paste your article here, or import an EPUB or TXT file..."></textarea>
+      <p id="empty-article-msg" class="hint" style="display: none; color: var(--danger); margin-top: 8px;">Paste or import text first.</p>
     </div>
 
     <div id="reading-history-card" class="card" style="display: none;">
@@ -263,7 +295,10 @@
     <div class="panel-resize" id="panel-resize" title="Drag to resize"></div>
     <span class="close-btn" id="close-panel" aria-label="Close">&times;</span>
     <h3>Explanation</h3>
-    <div class="term" id="panel-term"></div>
+    <div class="term-row">
+      <div class="term" id="panel-term"></div>
+      <button type="button" class="speak-btn" id="speak-term-btn" title="Listen to selected text" aria-label="Listen">🔊</button>
+    </div>
     <div class="content" id="panel-content"></div>
     <button type="button" class="btn btn-secondary add-vocab-btn" id="add-vocab-btn" style="display: none;">Add to vocabulary</button>
     <div id="chat-section" class="chat-section" style="display: none;">
@@ -291,6 +326,7 @@
     const panelContent = document.getElementById('panel-content');
     const closePanelBtn = document.getElementById('close-panel');
     const addVocabBtn = document.getElementById('add-vocab-btn');
+    const speakTermBtn = document.getElementById('speak-term-btn');
     const chatSection = document.getElementById('chat-section');
     const chatMessages = document.getElementById('chat-messages');
     const chatInput = document.getElementById('chat-input');
@@ -387,7 +423,7 @@
     let currentArticle = '';
     let currentBookId = null;
     let currentPositionKey = null;
-    let lastExplanation = { word: '', concise_meaning: '' };
+    let lastExplanation = { word: '', concise_meaning: '', fullSentence: '' };
     let savePositionTimeout = null;
     let chatContext = null;
     let cachedVocab = null;
@@ -593,10 +629,21 @@
       vocabTooltip.style.top = top + 'px';
     }
 
+    const emptyArticleMsg = document.getElementById('empty-article-msg');
+
+    articleInput.addEventListener('input', () => {
+      if (articleInput.value.trim()) emptyArticleMsg.style.display = 'none';
+    });
+
     submitBtn.addEventListener('click', async () => {
       currentBookId = null;
       currentArticle = articleInput.value.trim();
-      if (!currentArticle) return;
+      if (!currentArticle) {
+        emptyArticleMsg.style.display = 'block';
+        articleInput.focus();
+        return;
+      }
+      emptyArticleMsg.style.display = 'none';
 
       const contentId = simpleHash(currentArticle);
       currentPositionKey = contentId;
@@ -771,7 +818,7 @@
         panelContent.innerHTML = formatExplanation(raw);
         panelContent.className = 'content';
 
-        lastExplanation = { word: selectedText, concise_meaning: data.concise_meaning || '', explanation: raw };
+        lastExplanation = { word: selectedText, concise_meaning: data.concise_meaning || '', explanation: raw, fullSentence };
         addVocabBtn.style.display = 'block';
         addVocabBtn.textContent = 'Add to vocabulary';
         addVocabBtn.classList.remove('added');
@@ -797,6 +844,24 @@
       return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/\n/g, '<br>');
     }
+
+    function speakText(text, btn) {
+      if (!text || !window.speechSynthesis) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = document.documentElement.lang || 'en-US';
+      u.rate = 0.9;
+      if (btn) {
+        btn.classList.add('speaking');
+        u.onend = u.onerror = () => btn.classList.remove('speaking');
+      }
+      window.speechSynthesis.speak(u);
+    }
+
+    speakTermBtn.addEventListener('click', () => {
+      const text = lastExplanation.word || panelTerm.textContent.replace(/^"|"$/g, '').trim();
+      if (text) speakText(text, speakTermBtn);
+    });
 
     articleScroll.addEventListener('scroll', () => {
       updateProgress();
