@@ -658,6 +658,16 @@ def record_usage(request: UsageRequest):
     return {"status": "ok"}
 
 
+@app.delete("/api/usage")
+def reset_usage():
+    """Reset total usage time to zero."""
+    data = _load_usage_stats()
+    data["total_seconds"] = 0
+    with open(USAGE_STATS_JSON, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    return {"status": "ok"}
+
+
 @app.post("/api/vocabulary")
 def add_to_vocabulary(request: VocabularyRequest):
     """Append a word to the vocabulary CSV file."""

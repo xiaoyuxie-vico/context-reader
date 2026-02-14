@@ -79,8 +79,13 @@
     <p class="subtitle">Words added per date</p>
 
     <div id="usage-card" class="card" style="margin-bottom: 20px;">
-      <p style="margin: 0; font-size: 15px;"><strong>Total time in app</strong></p>
-      <p id="usage-time" style="margin: 8px 0 0 0; font-size: 1.25rem; color: var(--accent);">—</p>
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+        <div>
+          <p style="margin: 0; font-size: 15px;"><strong>Total time in app</strong></p>
+          <p id="usage-time" style="margin: 8px 0 0 0; font-size: 1.25rem; color: var(--accent);">—</p>
+        </div>
+        <button type="button" id="reset-usage-btn" class="btn btn-secondary" style="font-size: 13px;">Reset</button>
+      </div>
     </div>
 
     <div class="card">
@@ -149,6 +154,20 @@
       const d = new Date(dateStr + 'T12:00:00');
       return isNaN(d) ? dateStr : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
+
+    document.getElementById('reset-usage-btn').addEventListener('click', async function() {
+      if (!confirm('Reset total time to zero? This cannot be undone.')) return;
+      try {
+        const res = await fetch('/api/usage', { method: 'DELETE' });
+        if (res.ok) {
+          document.getElementById('usage-time').textContent = '0 min';
+        } else {
+          alert('Failed to reset.');
+        }
+      } catch (err) {
+        alert('Failed to reset: ' + err.message);
+      }
+    });
 
     loadSummary();
   </script>
