@@ -222,6 +222,40 @@
       font-size: 13px;
       color: var(--text-muted);
     }
+    .page-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 8px;
+    }
+    .page-btn {
+      width: 32px;
+      height: 28px;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+      color: var(--text-muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .page-btn:hover:not(:disabled) {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .page-info {
+      font-size: 12px;
+      min-width: 4em;
+      text-align: center;
+    }
     .progress-bar {
       flex: 1;
       height: 6px;
@@ -425,11 +459,23 @@
               Words in this article
             </label>
           </div>
+          <div class="reading-control">
+            <label>Mode</label>
+            <div class="segmented" role="group" aria-label="Reading mode">
+              <button type="button" class="reading-mode-btn active" data-mode="scroll">Scroll</button>
+              <button type="button" class="reading-mode-btn" data-mode="paged">Paged</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="reading-progress">
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%"></div></div>
         <span class="progress-pct" id="progress-pct">0%</span>
+        <div id="page-nav" class="page-nav" style="display: none;">
+          <button type="button" id="page-prev" class="page-btn" title="Previous page">‹</button>
+          <span id="page-info" class="page-info">1 / 1</span>
+          <button type="button" id="page-next" class="page-btn" title="Next page">›</button>
+        </div>
       </div>
       <div class="article-layout">
         <div id="vocab-sidebar" class="vocab-sidebar" style="display: none;">
@@ -566,6 +612,121 @@
       bgColorSelect.value = savedBg;
     }
 
+    const READING_MODE_KEY = 'context-reader-reading-mode';
+    const pageNav = document.getElementById('page-nav');
+    const pagePrevBtn = document.getElementById('page-prev');
+    const pageNextBtn = document.getElementById('page-next');
+    const pageInfo = document.getElementById('page-info');
+
+    function getReadingMode() {
+      try {
+        const v = localStorage.getItem(READING_MODE_KEY);
+        return (v === 'paged' || v === 'scroll') ? v : 'scroll';
+      } catch (_) { return 'scroll'; }
+    }
+
+    function setReadingMode(mode) {
+      try { localStorage.setItem(READING_MODE_KEY, mode); } catch (_) {}
+    }
+
+    function applyReadingMode(mode) {
+      const isPaged = mode === 'paged';
+      pageNav.style.display = isPaged ? 'flex' : 'none';
+      progressPct.style.display = isPaged ? 'none' : 'block';
+      document.querySelectorAll('.reading-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+      articleScroll.dataset.paged = isPaged ? '1' : '0';
+      if (isPaged) {
+        goToPage(getCurrentPage());
+      }
+      updateProgress();
+    }
+
+    function getPageHeight() {
+      return articleScroll.clientHeight;
+    }
+
+    function getMaxScroll() {
+      return Math.max(0, articleScroll.scrollHeight - articleScroll.clientHeight);
+    }
+
+    function getCurrentPage() {
+      const h = getPageHeight();
+      if (h <= 0) return 1;
+      const maxScroll = getMaxScroll();
+      if (maxScroll <= 0) return 1;
+      return Math.floor(articleScroll.scrollTop / h) + 1;
+    }
+
+    function getTotalPages() {
+      const h = getPageHeight();
+      if (h <= 0) return 1;
+      return Math.max(1, Math.ceil(articleScroll.scrollHeight / h));
+    }
+
+    function goToPage(page) {
+      const total = getTotalPages();
+      const p = Math.max(1, Math.min(page, total));
+      const h = getPageHeight();
+      articleScroll.scrollTop = (p - 1) * h;
+      pageInfo.textContent = `${p} / ${total}`;
+      pagePrevBtn.disabled = p <= 1;
+      pageNextBtn.disabled = p >= total;
+    }
+
+    function pageNext() {
+      if (articleScroll.dataset.paged !== '1') return;
+      const total = getTotalPages();
+      const current = getCurrentPage();
+      if (current < total) goToPage(current + 1);
+    }
+
+    function pagePrev() {
+      if (articleScroll.dataset.paged !== '1') return;
+      const current = getCurrentPage();
+      if (current > 1) goToPage(current - 1);
+    }
+
+    document.querySelectorAll('.reading-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        setReadingMode(mode);
+        applyReadingMode(mode);
+      });
+    });
+
+    const savedReadingMode = getReadingMode();
+    applyReadingMode(savedReadingMode);
+
+    pagePrevBtn.addEventListener('click', pagePrev);
+    pageNextBtn.addEventListener('click', pageNext);
+
+    window.addEventListener('resize', () => {
+      if (articleScroll.dataset.paged === '1') updateProgress();
+    });
+
+    articleScroll.addEventListener('wheel', (e) => {
+      if (articleScroll.dataset.paged !== '1') return;
+      e.preventDefault();
+      if (e.deltaY > 0) pageNext();
+      else if (e.deltaY < 0) pagePrev();
+    }, { passive: false });
+
+    document.addEventListener('keydown', (e) => {
+      if (articleScroll.dataset.paged !== '1') return;
+      const tag = document.activeElement?.tagName;
+      const skip = ['INPUT', 'TEXTAREA', 'BUTTON', 'A'].includes(tag) || document.activeElement?.isContentEditable;
+      if (skip) return;
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        pageNext();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        pagePrev();
+      }
+    });
+
     const showVocabSidebarCheckbox = document.getElementById('show-vocab-sidebar');
     showVocabSidebarCheckbox.checked = getShowVocabSidebar();
     showVocabSidebarCheckbox.addEventListener('change', () => {
@@ -581,6 +742,9 @@
       const pct = maxScroll <= 0 ? 100 : Math.round((scrollTop / maxScroll) * 100);
       progressFill.style.width = pct + '%';
       progressPct.textContent = pct + '%';
+      if (articleScroll.dataset.paged === '1') {
+        goToPage(getCurrentPage());
+      }
     }
 
     let currentArticle = '';
