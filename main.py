@@ -254,6 +254,8 @@ Use this exact format (use **bold** for keywords):
 2. **Meaning in this sentence**: 1-2 sentences explaining how it's used in the given context
 3. **Examples**: 1 example sentence
 4. **Expressions**: 1-2 common expressions or collocations using this word
+5. **Why this word here?**: 1-2 sentences on why the author chose this word in this context (tone, emphasis, alternatives they could have used)
+6. **Register & formality**: A few keywords only (e.g. formal, informal, academic, casual, literary)
 
 Selected text: "{selected_text}"
 Full sentence: "{full_sentence}"
