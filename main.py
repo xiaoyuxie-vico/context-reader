@@ -331,22 +331,120 @@ def _save_reading_history(entries: list[dict]) -> None:
         json.dump(entries, f, indent=2)
 
 
-def _save_cached_content(content_id: str, text: str) -> None:
-    """Save text content to cache."""
+CACHED_MANIFEST = CACHED_CONTENT_DIR / "_manifest.json"
+
+
+def _sanitize_filename(title: str) -> str:
+    """Sanitize title for use as filename."""
+    s = re.sub(r'[<>:"/\\|?*\n\r]', "_", (title or "").strip())
+    s = re.sub(r"_+", "_", s).strip("_")
+    return (s[:60] or "untitled").strip()
+
+
+def _load_cached_manifest() -> dict:
+    """Load content_id -> filename mapping."""
+    if not CACHED_MANIFEST.exists():
+        return {}
+    try:
+        with open(CACHED_MANIFEST, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_cached_manifest(manifest: dict) -> None:
+    """Save manifest."""
     CACHED_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
-    path = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    with open(CACHED_MANIFEST, "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+
+
+def _save_cached_content(content_id: str, text: str, title: str | None = None) -> None:
+    """Save text content to cache. Filename uses title when provided."""
+    CACHED_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    manifest = _load_cached_manifest()
+    suffix = content_id[:12] if len(content_id) >= 8 else content_id
+    if title:
+        base = _sanitize_filename(title) + "_" + suffix
+    else:
+        base = content_id
+    filename = base + ".txt"
+    path = CACHED_CONTENT_DIR / filename
+    old_filename = manifest.get(content_id)
+    if old_filename:
+        old_path = CACHED_CONTENT_DIR / old_filename
+        if old_path.exists() and old_path != path:
+            try:
+                old_path.unlink()
+            except OSError:
+                pass
     path.write_text(text, encoding="utf-8")
+    manifest[content_id] = filename
+    _save_cached_manifest(manifest)
+    legacy = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    if legacy.exists() and legacy != path:
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+
+
+def _rename_cached_content(content_id: str, title: str) -> None:
+    """Rename existing cached file to use new title (e.g. after EPUB import)."""
+    legacy = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    if not legacy.exists():
+        return
+    manifest = _load_cached_manifest()
+    suffix = content_id[:12] if len(content_id) >= 8 else content_id
+    base = _sanitize_filename(title) + "_" + suffix
+    filename = base + ".txt"
+    new_path = CACHED_CONTENT_DIR / filename
+    try:
+        legacy.rename(new_path)
+        manifest[content_id] = filename
+        _save_cached_manifest(manifest)
+    except OSError:
+        pass
 
 
 def _load_cached_content(content_id: str) -> str | None:
     """Load text content from cache."""
-    path = CACHED_CONTENT_DIR / f"{content_id}.txt"
-    if not path.exists():
-        return None
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
-        return None
+    manifest = _load_cached_manifest()
+    filename = manifest.get(content_id)
+    if filename:
+        path = CACHED_CONTENT_DIR / filename
+        if path.exists():
+            try:
+                return path.read_text(encoding="utf-8")
+            except OSError:
+                pass
+    legacy = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    if legacy.exists():
+        try:
+            return legacy.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    return None
+
+
+def _delete_cached_content(content_id: str) -> None:
+    """Remove cached content file and manifest entry."""
+    manifest = _load_cached_manifest()
+    filename = manifest.pop(content_id, None)
+    if filename:
+        path = CACHED_CONTENT_DIR / filename
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError:
+                pass
+        _save_cached_manifest(manifest)
+    legacy = CACHED_CONTENT_DIR / f"{content_id}.txt"
+    if legacy.exists():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
 
 
 @app.post("/api/import-txt")
@@ -417,8 +515,11 @@ def get_reading_history():
 @app.post("/api/reading-history")
 def add_reading_history(request: ReadingHistoryAddRequest):
     """Add an item to reading history. Caches content for pasted/txt."""
+    title = (request.title or "")[:80]
     if request.content:
-        _save_cached_content(request.content_id, request.content)
+        _save_cached_content(request.content_id, request.content, title)
+    else:
+        _rename_cached_content(request.content_id, title)
     entries = _load_reading_history()
     entry = {
         "id": hashlib.sha256(f"{request.content_id}{datetime.now().isoformat()}".encode()).hexdigest()[:16],
@@ -454,8 +555,13 @@ def get_reading_history_content(item_id: str):
 
 @app.delete("/api/reading-history/{item_id}")
 def delete_reading_history(item_id: str):
-    """Remove an item from reading history."""
+    """Remove an item from reading history and its cached content."""
     entries = _load_reading_history()
+    entry = next((e for e in entries if e.get("id") == item_id), None)
+    if entry:
+        content_id = entry.get("content_id")
+        if content_id:
+            _delete_cached_content(content_id)
     entries = [e for e in entries if e.get("id") != item_id]
     _save_reading_history(entries)
     return {"status": "deleted"}
@@ -463,7 +569,7 @@ def delete_reading_history(item_id: str):
 
 @app.put("/api/reading-history/{item_id}")
 def update_reading_history(item_id: str, request: ReadingHistoryUpdateRequest):
-    """Rename a reading history item."""
+    """Rename a reading history item and its cached file."""
     title = (request.title or "").strip()[:80]
     if not title:
         raise HTTPException(status_code=400, detail="Title is required")
@@ -471,6 +577,11 @@ def update_reading_history(item_id: str, request: ReadingHistoryUpdateRequest):
     for e in entries:
         if e.get("id") == item_id:
             e["title"] = title
+            content_id = e.get("content_id")
+            if content_id and _load_cached_content(content_id):
+                text = _load_cached_content(content_id)
+                if text is not None:
+                    _save_cached_content(content_id, text, title)
             _save_reading_history(entries)
             return {"status": "updated"}
     raise HTTPException(status_code=404, detail="Not found")
