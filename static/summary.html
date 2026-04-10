@@ -49,6 +49,13 @@
       font-size: 12px;
       color: var(--text-muted);
       margin-top: 4px;
+      text-align: center;
+    }
+    .bar-time {
+      font-size: 11px;
+      color: var(--accent);
+      margin-top: 2px;
+      font-weight: 500;
     }
     .nav-links {
       margin-top: 28px;
@@ -76,7 +83,7 @@
     </nav>
 
     <h1>Vocabulary Summary</h1>
-    <p class="subtitle">Words added per date</p>
+    <p class="subtitle">Words added and time in app per date</p>
 
     <div id="usage-card" class="card" style="margin-bottom: 20px;">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
@@ -116,13 +123,14 @@
         const res = await fetch('/api/vocabulary/summary');
         const data = await res.json();
         const byDate = data.by_date || {};
+        const usageByDate = data.usage_by_date || {};
         const entries = Object.entries(byDate);
         const totalSeconds = data.total_usage_seconds || 0;
 
         document.getElementById('usage-time').textContent = formatUsage(totalSeconds);
 
         if (!entries.length) {
-          emptyMsg.textContent = 'No vocabulary data yet. Add words from the Article Reader.';
+          emptyMsg.textContent = 'No vocabulary or usage data yet. Add words from the Article Reader; time in app appears here after you use the app.';
           emptyMsg.style.display = 'block';
           chartContainer.style.display = 'none';
           return;
@@ -131,16 +139,18 @@
         emptyMsg.style.display = 'none';
         chartContainer.style.display = 'flex';
 
-        const maxCount = Math.max(...entries.map(([, c]) => c));
+        const maxCount = Math.max(...entries.map(([, c]) => c), 0);
         const maxBarHeight = 180;
 
         chartContainer.innerHTML = entries.map(([date, count]) => {
           const barHeight = maxCount > 0 ? Math.max((count / maxCount) * maxBarHeight, 16) : 16;
+          const daySeconds = usageByDate[date] != null ? usageByDate[date] : 0;
           return `
             <div class="bar-group">
               <div class="bar" style="height: ${barHeight}px"></div>
               <div class="bar-label">${formatDate(date)}</div>
               <div class="bar-value">${count} word${count !== 1 ? 's' : ''}</div>
+              <div class="bar-time">${formatUsage(daySeconds)}</div>
             </div>
           `;
         }).join('');
@@ -160,7 +170,7 @@
       try {
         const res = await fetch('/api/usage', { method: 'DELETE' });
         if (res.ok) {
-          document.getElementById('usage-time').textContent = '0 min';
+          loadSummary();
         } else {
           alert('Failed to reset.');
         }

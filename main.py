@@ -621,33 +621,47 @@ def get_vocabulary():
 def _load_usage_stats() -> dict:
     """Load usage statistics."""
     if not USAGE_STATS_JSON.exists():
-        return {"total_seconds": 0}
+        return {"total_seconds": 0, "by_date": {}}
     try:
         with open(USAGE_STATS_JSON, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
     except (json.JSONDecodeError, OSError):
-        return {"total_seconds": 0}
+        return {"total_seconds": 0, "by_date": {}}
+    else:
+        data.setdefault("total_seconds", 0)
+        data.setdefault("by_date", {})
+        return data
 
 
 def _add_usage_seconds(seconds: int) -> None:
-    """Add seconds to total usage."""
+    """Add seconds to total usage and to today's date bucket."""
     data = _load_usage_stats()
     data["total_seconds"] = data.get("total_seconds", 0) + seconds
+    today = datetime.now().strftime("%Y-%m-%d")
+    by_date = data.setdefault("by_date", {})
+    by_date[today] = by_date.get(today, 0) + seconds
     with open(USAGE_STATS_JSON, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
 
 @app.get("/api/vocabulary/summary")
 def get_vocabulary_summary():
-    """Return word counts by date for the bar chart."""
+    """Return word counts by date for the bar chart, plus per-day app usage time."""
     rows = _read_vocab_rows()
     counts = Counter()
     for row in rows:
         if row.get("date"):
             counts[row["date"]] += 1
-    by_date = dict(sorted(counts.items()))
     usage = _load_usage_stats()
-    return {"by_date": by_date, "total_usage_seconds": usage.get("total_seconds", 0)}
+    usage_by_date = usage.get("by_date") or {}
+    all_dates = sorted(set(counts.keys()) | set(usage_by_date.keys()))
+    by_date = {d: counts.get(d, 0) for d in all_dates}
+    usage_for_dates = {d: int(usage_by_date.get(d, 0)) for d in all_dates}
+    return {
+        "by_date": by_date,
+        "usage_by_date": usage_for_dates,
+        "total_usage_seconds": usage.get("total_seconds", 0),
+    }
 
 
 @app.post("/api/usage")
@@ -660,9 +674,10 @@ def record_usage(request: UsageRequest):
 
 @app.delete("/api/usage")
 def reset_usage():
-    """Reset total usage time to zero."""
+    """Reset total usage time and per-day usage to zero."""
     data = _load_usage_stats()
     data["total_seconds"] = 0
+    data["by_date"] = {}
     with open(USAGE_STATS_JSON, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     return {"status": "ok"}
