@@ -492,7 +492,7 @@
 
   <div id="vocab-tooltip" class="vocab-tooltip" style="display: none;"></div>
 
-  <div id="explanation-panel" class="explanation-panel">
+  <div id="explanation-panel" class="explanation-panel" tabindex="-1">
     <div class="panel-resize" id="panel-resize" title="Drag to resize"></div>
     <div id="resize-hint" class="resize-hint" style="display: none;">Drag to resize</div>
     <span class="close-btn" id="close-panel" aria-label="Close">&times;</span>
@@ -1222,6 +1222,32 @@
     }
 
     const MAX_SELECTION_WORDS = 400;
+    let explainAbortController = null;
+
+    function hasTextSelectedInArticle() {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return false;
+      const txt = sel.toString().trim();
+      if (!txt) return false;
+      const root = sel.getRangeAt(0).commonAncestorContainer;
+      const el = root.nodeType === Node.TEXT_NODE ? root.parentElement : root;
+      return el && articleContent.contains(el);
+    }
+
+    function hideExplanationPanel() {
+      explanationPanel.classList.remove('visible');
+      if (explainAbortController) {
+        explainAbortController.abort();
+        explainAbortController = null;
+      }
+    }
+
+    function hideExplanationIfNoArticleSelection() {
+      if (!explanationPanel.classList.contains('visible')) return;
+      if (hasTextSelectedInArticle()) return;
+      if (explanationPanel.matches(':focus-within')) return;
+      hideExplanationPanel();
+    }
 
     async function explainSelection() {
       const selection = window.getSelection();
@@ -1238,6 +1264,10 @@
 
       const numSentences = wordCount > 5 ? 3 : 1;
       const fullSentence = wordCount > 50 ? selectedText : getSentencesContaining(selectedText, currentArticle, numSentences);
+
+      explainAbortController?.abort();
+      explainAbortController = new AbortController();
+      const signal = explainAbortController.signal;
 
       explanationPanel.classList.add('visible');
       if (window._showResizeHint) window._showResizeHint();
@@ -1258,9 +1288,11 @@
             selected_text: selectedText,
             full_sentence: fullSentence,
             phrase_mode: wordCount > 5
-          })
+          }),
+          signal
         });
         const data = await res.json();
+        if (signal.aborted) return;
         const raw = data.explanation || 'No explanation available.';
         panelContent.innerHTML = formatExplanation(raw);
         panelContent.className = 'content';
@@ -1278,6 +1310,8 @@
         };
         chatSection.style.display = 'block';
       } catch (err) {
+        if (err.name === 'AbortError') return;
+        if (signal.aborted) return;
         panelContent.textContent = 'Error: ' + err.message;
         panelContent.className = 'content';
       }
@@ -1345,8 +1379,17 @@
       }, 10);
     });
 
+    document.addEventListener('selectionchange', () => {
+      requestAnimationFrame(hideExplanationIfNoArticleSelection);
+    });
+
+    explanationPanel.addEventListener('mousedown', (e) => {
+      if (e.target.closest('input, textarea, button, select, a, #panel-resize')) return;
+      explanationPanel.focus({ preventScroll: true });
+    });
+
     closePanelBtn.addEventListener('click', () => {
-      explanationPanel.classList.remove('visible');
+      hideExplanationPanel();
     });
 
     (function initPanelResize() {
