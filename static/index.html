@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js" crossorigin="anonymous"></script>
   <script src="/static/usage.js"></script>
   <style>
     .article-content {
@@ -210,9 +211,13 @@
       min-width: 0;
       max-height: 65vh;
       overflow-y: auto;
+      overflow-x: hidden;
       padding: 20px;
       border-radius: var(--radius-sm);
       transition: background-color 0.2s ease;
+    }
+    #article-scroll[data-pdf="1"] {
+      overflow-x: auto;
     }
     .reading-progress {
       display: flex;
@@ -391,6 +396,21 @@
     }
     .vocab-sidebar-list .vocab-delete:hover { color: var(--danger); background: var(--bg); }
     .vocab-sidebar-empty { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+    .pdf-viewer-root { padding: 8px 0 32px; min-height: 200px; }
+    .pdf-page-wrap { position: relative; margin: 0 auto 16px; background: #fff; box-shadow: var(--shadow-lg); border-radius: var(--radius-sm); overflow: hidden; }
+    .pdf-viewer-root canvas { display: block; margin: 0 auto; vertical-align: top; }
+    .pdf-viewer-root .textLayer {
+      position: absolute; left: 0; top: 0; right: 0; bottom: 0; overflow: hidden;
+      line-height: 1; opacity: 1; pointer-events: auto;
+    }
+    .pdf-viewer-root .textLayer span {
+      color: transparent; position: absolute; white-space: pre; cursor: text;
+      transform-origin: 0 0;
+    }
+    .pdf-viewer-root .textLayer span::selection {
+      background: rgba(14, 165, 233, 0.35);
+    }
+    .pdf-loading { padding: 32px; text-align: center; color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -403,17 +423,19 @@
     </nav>
 
     <h1>Read with context</h1>
-    <p class="subtitle">Paste your article, import an EPUB or TXT file, or paste text below. Select any word or phrase to get a contextual explanation powered by AI.</p>
+    <p class="subtitle">Paste your article, import EPUB, TXT, or PDF, or paste text below. PDFs open in a built-in viewer—select text for explanations like other formats.</p>
 
     <div class="card">
       <div class="action-bar" style="margin-bottom: 12px;">
         <button id="submit-btn" class="btn btn-primary">Display Article</button>
         <button id="import-epub-btn" class="btn btn-secondary">Import EPUB</button>
         <button id="import-txt-btn" class="btn btn-secondary">Import TXT</button>
+        <button id="import-pdf-btn" class="btn btn-secondary">Import PDF</button>
         <input type="file" id="epub-input" accept=".epub" style="display: none;">
         <input type="file" id="txt-input" accept=".txt" style="display: none;">
+        <input type="file" id="pdf-input" accept=".pdf,application/pdf" style="display: none;">
       </div>
-      <textarea id="article-input" placeholder="Paste your article here, or import an EPUB or TXT file..."></textarea>
+      <textarea id="article-input" placeholder="Paste your article here, or import EPUB, TXT, or PDF..."></textarea>
       <p id="empty-article-msg" class="hint" style="display: none; color: var(--danger); margin-top: 8px;">Paste or import text first.</p>
     </div>
 
@@ -466,6 +488,17 @@
               <button type="button" class="reading-mode-btn" data-mode="paged">Paged</button>
             </div>
           </div>
+          <div class="reading-control" id="pdf-view-size-wrap" style="display: none;">
+            <label for="pdf-view-size">PDF view</label>
+            <select id="pdf-view-size" title="Zoom: Fit width uses the full reading column; other options scale relative to that fit.">
+              <option value="fit">Fit width</option>
+              <option value="100">Actual size</option>
+              <option value="125">125%</option>
+              <option value="150">150%</option>
+              <option value="200">200%</option>
+              <option value="250">250%</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="reading-progress">
@@ -485,6 +518,7 @@
         </div>
         <div id="article-scroll">
           <div id="article-content" class="article-content"></div>
+          <div id="pdf-viewer-root" class="pdf-viewer-root" style="display: none;" aria-label="PDF document"></div>
         </div>
       </div>
     </div>
@@ -518,11 +552,14 @@
     const submitBtn = document.getElementById('submit-btn');
     const importEpubBtn = document.getElementById('import-epub-btn');
     const importTxtBtn = document.getElementById('import-txt-btn');
+    const importPdfBtn = document.getElementById('import-pdf-btn');
     const epubInput = document.getElementById('epub-input');
     const txtInput = document.getElementById('txt-input');
+    const pdfInput = document.getElementById('pdf-input');
     const articleContainer = document.getElementById('article-container');
     const articleScroll = document.getElementById('article-scroll');
     const articleContent = document.getElementById('article-content');
+    const pdfViewerRoot = document.getElementById('pdf-viewer-root');
     const explanationPanel = document.getElementById('explanation-panel');
     const panelTerm = document.getElementById('panel-term');
     const panelContent = document.getElementById('panel-content');
@@ -536,6 +573,9 @@
     const progressFill = document.getElementById('progress-fill');
     const progressPct = document.getElementById('progress-pct');
     const bgColorSelect = document.getElementById('bg-color');
+    const pdfViewSizeWrap = document.getElementById('pdf-view-size-wrap');
+    const pdfViewSizeSelect = document.getElementById('pdf-view-size');
+    const PDF_VIEW_SIZE_KEY = 'context-reader-pdf-view-size';
 
     const FONT_SIZES = { small: '15px', medium: '18px', large: '22px' };
 
@@ -630,6 +670,11 @@
     }
 
     function applyReadingMode(mode) {
+      if (articleScroll.dataset.pdf === '1') {
+        pageNav.style.display = 'none';
+        progressPct.style.display = 'block';
+        return;
+      }
       const isPaged = mode === 'paged';
       pageNav.style.display = isPaged ? 'flex' : 'none';
       progressPct.style.display = isPaged ? 'none' : 'block';
@@ -707,6 +752,7 @@
     });
 
     articleScroll.addEventListener('wheel', (e) => {
+      if (articleScroll.dataset.pdf === '1') return;
       if (articleScroll.dataset.paged !== '1') return;
       e.preventDefault();
       if (e.deltaY > 0) pageNext();
@@ -714,6 +760,7 @@
     }, { passive: false });
 
     document.addEventListener('keydown', (e) => {
+      if (articleScroll.dataset.pdf === '1') return;
       if (articleScroll.dataset.paged !== '1') return;
       const tag = document.activeElement?.tagName;
       const skip = ['INPUT', 'TEXTAREA', 'BUTTON', 'A'].includes(tag) || document.activeElement?.isContentEditable;
@@ -742,7 +789,7 @@
       const pct = maxScroll <= 0 ? 100 : Math.round((scrollTop / maxScroll) * 100);
       progressFill.style.width = pct + '%';
       progressPct.textContent = pct + '%';
-      if (articleScroll.dataset.paged === '1') {
+      if (articleScroll.dataset.paged === '1' && articleScroll.dataset.pdf !== '1') {
         goToPage(getCurrentPage());
       }
     }
@@ -754,6 +801,139 @@
     let savePositionTimeout = null;
     let chatContext = null;
     let cachedVocab = null;
+    let currentPdfBookId = null;
+    let cachedPdfJsDocument = null;
+
+    function exitPdfMode() {
+      currentPdfBookId = null;
+      cachedPdfJsDocument = null;
+      articleScroll.removeAttribute('data-pdf');
+      pdfViewerRoot.style.display = 'none';
+      pdfViewerRoot.innerHTML = '';
+      articleContent.style.display = '';
+      if (pdfViewSizeWrap) pdfViewSizeWrap.style.display = 'none';
+      applyReadingMode(getReadingMode());
+    }
+
+    async function refreshReadingVocabUi() {
+      invalidateVocabCache();
+      if (currentPdfBookId) {
+        try {
+          const res = await fetch('/api/vocabulary');
+          const data = await res.json();
+          cachedVocab = data.entries || [];
+        } catch (_) {
+          cachedVocab = [];
+        }
+        updateVocabSidebar(currentArticle, cachedVocab);
+      } else if (currentArticle) {
+        await setArticleContent(currentArticle);
+      }
+    }
+
+    async function renderPdfDocumentPages(pdf) {
+      applyPdfViewSizeSelect();
+      const mode = getPdfViewSizeMode();
+      pdfViewerRoot.innerHTML = '';
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const pad = 24;
+      const measureW = () => {
+        const w = articleScroll.clientWidth || articleScroll.offsetWidth
+          || document.getElementById('article-container')?.clientWidth
+          || window.innerWidth;
+        return Math.max(420, w - pad * 2);
+      };
+      const maxW = measureW();
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+
+      for (let num = 1; num <= pdf.numPages; num++) {
+        const page = await pdf.getPage(num);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = scaleForPdfPage(baseViewport, maxW, mode);
+        const viewport = page.getViewport({ scale });
+
+        const wrap = document.createElement('div');
+        wrap.className = 'pdf-page-wrap';
+        wrap.style.width = viewport.width + 'px';
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const wPx = Math.floor(viewport.width * dpr);
+        const hPx = Math.floor(viewport.height * dpr);
+        canvas.width = wPx;
+        canvas.height = hPx;
+        canvas.style.width = viewport.width + 'px';
+        canvas.style.height = viewport.height + 'px';
+
+        const textLayer = document.createElement('div');
+        textLayer.className = 'textLayer';
+        textLayer.style.width = viewport.width + 'px';
+        textLayer.style.height = viewport.height + 'px';
+
+        wrap.appendChild(canvas);
+        wrap.appendChild(textLayer);
+        pdfViewerRoot.appendChild(wrap);
+
+        const transform = dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null;
+        const renderTask = page.render({
+          canvasContext: ctx,
+          viewport,
+          transform: transform || undefined,
+        });
+        await renderTask.promise;
+        const textContent = await page.getTextContent();
+        const tl = pdfjsLib.renderTextLayer({
+          textContent,
+          container: textLayer,
+          viewport,
+          textDivs: [],
+        });
+        if (tl && tl.promise) await tl.promise;
+      }
+
+      if (!cachedVocab) {
+        try {
+          const res = await fetch('/api/vocabulary');
+          const data = await res.json();
+          cachedVocab = data.entries || [];
+        } catch (_) {
+          cachedVocab = [];
+        }
+      }
+      updateVocabSidebar(currentArticle, cachedVocab);
+    }
+
+    async function enterPdfMode(bookId, textForContext) {
+      if (typeof pdfjsLib === 'undefined') {
+        alert('PDF viewer library failed to load. Check your network connection.');
+        return;
+      }
+      exitPdfMode();
+      currentPdfBookId = bookId;
+      currentArticle = textForContext;
+      articleScroll.dataset.pdf = '1';
+      articleContent.style.display = 'none';
+      pdfViewerRoot.style.display = 'block';
+      if (pdfViewSizeWrap) pdfViewSizeWrap.style.display = '';
+      applyPdfViewSizeSelect();
+      pdfViewerRoot.innerHTML = '<div class="pdf-loading">Loading PDF…</div>';
+      pageNav.style.display = 'none';
+      progressPct.style.display = 'block';
+
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+      const pdfUrl = '/api/pdf/' + encodeURIComponent(bookId);
+      try {
+        const loadingTask = pdfjsLib.getDocument({ url: pdfUrl, withCredentials: false });
+        cachedPdfJsDocument = await loadingTask.promise;
+        await renderPdfDocumentPages(cachedPdfJsDocument);
+      } catch (err) {
+        console.error(err);
+        exitPdfMode();
+        await setArticleContent(textForContext);
+        alert('Could not load the PDF viewer; showing extracted text instead. (' + (err.message || err) + ')');
+      }
+    }
 
     function simpleHash(s) {
       let h = 0;
@@ -790,7 +970,7 @@
         card.style.display = 'block';
         list.classList.remove('expanded');
         list.innerHTML = entries.map((e, i) => {
-          const typeLabel = e.type === 'epub' ? 'EPUB' : (e.type === 'txt' ? 'TXT' : 'Pasted');
+          const typeLabel = { epub: 'EPUB', txt: 'TXT', pdf: 'PDF', pasted: 'Pasted' }[e.type] || 'Pasted';
           const meta = e.filename ? ` · ${e.filename}` : '';
           const collapsedClass = i >= 5 ? 'history-item-collapsed' : '';
           return `<li${collapsedClass ? ` class="${collapsedClass}"` : ''}><span class="history-title" data-id="${e.id}">${escapeHtml(e.title)}</span><span class="history-meta"><span class="history-type">${typeLabel}</span>${meta}</span><button type="button" class="history-rename" data-id="${e.id}" data-title="${escapeHtml(e.title)}" title="Rename">✎</button><button type="button" class="history-delete" data-id="${e.id}" title="Remove from history">×</button></li>`;
@@ -855,7 +1035,12 @@
         currentBookId = data.book_id || null;
         currentPositionKey = data.content_id || data.book_id || null;
         articleInput.value = data.text;
-        await setArticleContent(data.text);
+        if (data.type === 'pdf' && data.content_id) {
+          await enterPdfMode(data.content_id, data.text);
+        } else {
+          exitPdfMode();
+          await setArticleContent(data.text);
+        }
         articleContainer.style.display = 'block';
         articleScroll.scrollTop = 0;
         const histRes = await fetch('/api/reading-history');
@@ -932,6 +1117,52 @@
 
     const SHOW_VOCAB_SIDEBAR_KEY = 'context-reader-show-vocab-sidebar';
 
+    function getPdfViewSizeMode() {
+      try {
+        const v = localStorage.getItem(PDF_VIEW_SIZE_KEY);
+        if (v && ['fit', '100', '125', '150', '200', '250'].includes(v)) return v;
+      } catch (_) {}
+      return 'fit';
+    }
+
+    function applyPdfViewSizeSelect() {
+      if (pdfViewSizeSelect) pdfViewSizeSelect.value = getPdfViewSizeMode();
+    }
+
+    applyPdfViewSizeSelect();
+
+    if (pdfViewSizeSelect) {
+      pdfViewSizeSelect.addEventListener('change', async () => {
+        try { localStorage.setItem(PDF_VIEW_SIZE_KEY, pdfViewSizeSelect.value); } catch (_) {}
+        if (cachedPdfJsDocument && currentPdfBookId) {
+          pdfViewerRoot.innerHTML = '<div class="pdf-loading">Updating view…</div>';
+          await new Promise((r) => requestAnimationFrame(r));
+          await renderPdfDocumentPages(cachedPdfJsDocument);
+        }
+      });
+    }
+
+    function scaleForPdfPage(baseViewport, maxW, mode) {
+      const w = baseViewport.width;
+      const fitScale = Math.min(4, maxW / w);
+      switch (mode) {
+        case 'fit':
+          return Math.min(4, maxW / w);
+        case '100':
+          return 1;
+        case '125':
+          return Math.min(4, fitScale * 1.25);
+        case '150':
+          return Math.min(4, fitScale * 1.5);
+        case '200':
+          return Math.min(4, fitScale * 2);
+        case '250':
+          return Math.min(4, fitScale * 2.5);
+        default:
+          return fitScale;
+      }
+    }
+
     function getShowVocabSidebar() {
       try {
         const v = localStorage.getItem(SHOW_VOCAB_SIDEBAR_KEY);
@@ -1001,10 +1232,7 @@
           if (!confirm('Remove this word from your vocabulary?')) return;
           try {
             const res = await fetch(`/api/vocabulary/${index}`, { method: 'DELETE' });
-            if (res.ok) {
-              invalidateVocabCache();
-              if (currentArticle) await setArticleContent(currentArticle);
-            }
+            if (res.ok && currentArticle) await refreshReadingVocabUi();
           } catch (err) {
             console.error('Delete failed:', err);
           }
@@ -1075,6 +1303,7 @@
     });
 
     submitBtn.addEventListener('click', async () => {
+      exitPdfMode();
       currentBookId = null;
       currentArticle = articleInput.value.trim();
       if (!currentArticle) {
@@ -1105,10 +1334,12 @@
 
     importEpubBtn.addEventListener('click', () => epubInput.click());
     importTxtBtn.addEventListener('click', () => txtInput.click());
+    importPdfBtn.addEventListener('click', () => pdfInput.click());
 
     txtInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      exitPdfMode();
       importTxtBtn.disabled = true;
       importTxtBtn.textContent = 'Importing...';
       try {
@@ -1155,6 +1386,7 @@
     epubInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      exitPdfMode();
       importEpubBtn.disabled = true;
       importEpubBtn.textContent = 'Importing...';
       try {
@@ -1199,6 +1431,52 @@
       epubInput.value = '';
     });
 
+    pdfInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      importPdfBtn.disabled = true;
+      importPdfBtn.textContent = 'Importing...';
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await fetch('/api/import-pdf', {
+          method: 'POST',
+          body: formData,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          const msg = typeof err.detail === 'string' ? err.detail : (err.detail?.[0]?.msg || res.statusText);
+          throw new Error(msg || 'Import failed');
+        }
+        const data = await res.json();
+        articleInput.value = data.text;
+        currentBookId = data.book_id;
+        currentPositionKey = data.book_id;
+        await enterPdfMode(data.book_id, data.text);
+        articleContainer.style.display = 'block';
+        articleScroll.scrollTop = 0;
+        const title = (data.filename || 'Imported PDF').replace(/\.[^.]+$/, '');
+        await addToReadingHistory(title, 'pdf', data.book_id, data.book_id, data.filename || '', '');
+        const posRes = await fetch(`/api/reading-position?book_id=${data.book_id}`);
+        const posData = await posRes.json();
+        if (posData.position != null) {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              articleScroll.scrollTop = posData.position;
+              updateProgress();
+            });
+          });
+        } else {
+          updateProgress();
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+      importPdfBtn.disabled = false;
+      importPdfBtn.textContent = 'Import PDF';
+      pdfInput.value = '';
+    });
+
     function getSentencesContaining(text, fullText, numSentences = 1) {
       const idx = fullText.indexOf(text);
       if (idx === -1) return text;
@@ -1231,7 +1509,8 @@
       if (!txt) return false;
       const root = sel.getRangeAt(0).commonAncestorContainer;
       const el = root.nodeType === Node.TEXT_NODE ? root.parentElement : root;
-      return el && articleContent.contains(el);
+      const container = currentPdfBookId ? pdfViewerRoot : articleContent;
+      return el && container.contains(el);
     }
 
     function hideExplanationPanel() {
@@ -1370,7 +1649,7 @@
       }, 500);
     });
 
-    articleContent.addEventListener('mouseup', () => {
+    articleScroll.addEventListener('mouseup', () => {
       setTimeout(() => {
         const sel = window.getSelection();
         if (sel.toString().trim()) {
@@ -1514,8 +1793,7 @@
         if (res.ok) {
           addVocabBtn.textContent = 'Added ✓';
           addVocabBtn.classList.add('added');
-          invalidateVocabCache();
-          if (currentArticle) await setArticleContent(currentArticle);
+          if (currentArticle) await refreshReadingVocabUi();
         }
       } catch (err) {
         addVocabBtn.textContent = 'Error';

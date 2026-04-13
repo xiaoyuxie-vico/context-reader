@@ -13,6 +13,7 @@ import json
 import random
 import os
 import re
+import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,14 @@ try:
 except ImportError:
     EPUB_AVAILABLE = False
 
+_PDF_IMPORT_ERROR: str | None = None
+try:
+    import fitz  # PyMuPDF (pip package name: pymupdf)
+    PDF_AVAILABLE = True
+except Exception as e:
+    PDF_AVAILABLE = False
+    _PDF_IMPORT_ERROR = f"{type(e).__name__}: {e}"
+
 # LLM setup - configurable via env
 # Gemini (preferred): GEMINI_API_KEY or GOOGLE_API_KEY
 # OpenAI: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
@@ -44,6 +53,11 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 async def lifespan(app: FastAPI):
     if not GEMINI_API_KEY and not OPENAI_API_KEY and not OPENAI_BASE_URL:
         print("Warning: No GEMINI_API_KEY, OPENAI_API_KEY, or OPENAI_BASE_URL set. LLM explanations will fail.")
+    if not PDF_AVAILABLE:
+        print(
+            f"Warning: PDF import failed ({_PDF_IMPORT_ERROR}). "
+            f"Install with: {sys.executable} -m pip install pymupdf"
+        )
     yield
 
 
@@ -131,7 +145,7 @@ class ReadingPositionRequest(BaseModel):
 
 class ReadingHistoryAddRequest(BaseModel):
     title: str
-    type: str  # pasted, txt, epub
+    type: str  # pasted, txt, epub, pdf
     content_id: str
     book_id: str = ""
     filename: str = ""
@@ -181,6 +195,33 @@ def _extract_text_from_epub(file_content: bytes) -> str:
             if text:
                 parts.append(text)
     return "\n\n".join(parts) if parts else ""
+
+
+def _normalize_plain_text(text: str) -> str:
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _extract_text_from_pdf(file_content: bytes) -> str:
+    """Extract plain text from PDF (text-based PDFs; scanned pages need OCR)."""
+    if not PDF_AVAILABLE:
+        raise RuntimeError("PyMuPDF is required for PDF support. Run: pip install pymupdf")
+    doc = fitz.open(stream=file_content, filetype="pdf")
+    try:
+        parts = []
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            try:
+                t = page.get_text(sort=True)
+            except TypeError:
+                t = page.get_text()
+            if t:
+                parts.append(t)
+        raw = "\n\n".join(parts)
+        return _normalize_plain_text(raw)
+    finally:
+        doc.close()
 
 
 def extract_concise_meaning(explanation: str) -> str:
@@ -429,6 +470,16 @@ def _load_cached_content(content_id: str) -> str | None:
     return None
 
 
+def _pdf_cache_path(book_id: str) -> Path:
+    return CACHED_CONTENT_DIR / f"{book_id}.pdf"
+
+
+def _save_cached_pdf(book_id: str, raw: bytes) -> None:
+    """Store original PDF bytes for client-side viewing."""
+    CACHED_CONTENT_DIR.mkdir(parents=True, exist_ok=True)
+    _pdf_cache_path(book_id).write_bytes(raw)
+
+
 def _delete_cached_content(content_id: str) -> None:
     """Remove cached content file and manifest entry."""
     manifest = _load_cached_manifest()
@@ -445,6 +496,12 @@ def _delete_cached_content(content_id: str) -> None:
     if legacy.exists():
         try:
             legacy.unlink()
+        except OSError:
+            pass
+    pdf_path = _pdf_cache_path(content_id)
+    if pdf_path.exists():
+        try:
+            pdf_path.unlink()
         except OSError:
             pass
 
@@ -488,6 +545,48 @@ async def import_epub(file: UploadFile):
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read EPUB: {str(e)}")
+
+
+@app.post("/api/import-pdf")
+async def import_pdf(file: UploadFile):
+    """Extract text from uploaded PDF and cache like EPUB."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Please upload a .pdf file")
+    if not PDF_AVAILABLE:
+        detail = (
+            f"PDF support not available. Install PyMuPDF using the same Python that runs this app:\n"
+            f"  {sys.executable} -m pip install pymupdf"
+        )
+        if _PDF_IMPORT_ERROR:
+            detail += f"\n\nImport error: {_PDF_IMPORT_ERROR}"
+        raise HTTPException(status_code=500, detail=detail)
+    try:
+        content = await file.read()
+        book_id = hashlib.sha256(content).hexdigest()
+        text = _extract_text_from_pdf(content)
+        if not text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="No text found in this PDF. It may be scanned (image-only); OCR is not supported yet.",
+            )
+        _save_cached_pdf(book_id, content)
+        _save_cached_content(book_id, text)
+        return {"text": text, "filename": file.filename, "book_id": book_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read PDF: {str(e)}")
+
+
+@app.get("/api/pdf/{book_id}")
+def serve_cached_pdf(book_id: str):
+    """Serve cached PDF file for the in-browser viewer."""
+    if not book_id or len(book_id) < 32:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    path = _pdf_cache_path(book_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="PDF not found")
+    return FileResponse(path, media_type="application/pdf")
 
 
 @app.get("/api/reading-position")
@@ -552,7 +651,13 @@ def get_reading_history_content(item_id: str):
     text = _load_cached_content(content_id)
     if text is None:
         raise HTTPException(status_code=404, detail="Content no longer available")
-    return {"text": text, "book_id": entry.get("book_id", ""), "content_id": entry.get("content_id", ""), "filename": entry.get("filename", "")}
+    return {
+        "text": text,
+        "book_id": entry.get("book_id", ""),
+        "content_id": entry.get("content_id", ""),
+        "filename": entry.get("filename", ""),
+        "type": entry.get("type", ""),
+    }
 
 
 @app.delete("/api/reading-history/{item_id}")
